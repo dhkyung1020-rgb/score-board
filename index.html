@@ -169,6 +169,8 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .t-items{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
 .t-items span{font-size:clamp(11px,1vw,15px);padding:2px 9px;border-radius:999px;background:#efede7;color:#9a978f}
 .t-items span.ok{background:var(--accent-soft);color:var(--accent);font-weight:700}
+.ver-warn{max-width:1240px;margin:12px auto 0;padding:12px 16px;background:var(--warn-soft);border:1px solid #f0cdb3;color:#8a3d10;border-radius:12px;font-size:14px;line-height:1.6}
+.ver-warn[hidden]{display:none}
 .miss-chk{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--muted);margin-right:6px;cursor:pointer;user-select:none}
 .miss-chk input{margin:0;accent-color:var(--warn)}
 .cell.missing .miss-chk{color:var(--warn);font-weight:700}
@@ -297,6 +299,10 @@ dialog::backdrop{background:rgba(30,30,30,.35)}
   </div>
 </header>
 
+<div id="verWarn" class="ver-warn" hidden>
+  ⚠ 구글 시트의 Apps Script(<b>Code.gs</b>)가 예전 버전이에요. 이대로 저장하면 묶음·항목별 채점 같은 새 설정이 저장되지 않아요.
+  Apps Script에 새 Code.gs를 붙여넣고 <b>배포 → 배포 관리 → ✏️ 편집 → 버전: 새 버전 → 배포</b>를 해 주세요.
+</div>
 <main>
   <section class="panel" id="tab-input"></section>
   <section class="panel" id="tab-criteria" hidden></section>
@@ -599,7 +605,14 @@ async function api(action, payload = {}){
   return j.data;
 }
 
+// 이 웹페이지가 기대하는 시트 코드(Code.gs) 버전
+const SERVER_VERSION = 9;
+function checkServerVersion(d){
+  const old = !cfg.demo && (Number(d.version) || 0) < SERVER_VERSION;
+  $('#verWarn').hidden = !old;
+}
 function applyData(d){
+  checkServerVersion(d);
   if (d.terms) terms = d.terms;
   if (d.term && d.term !== currentTerm){ currentTerm = d.term; store(TERM_KEY, currentTerm); }
   renderTermSel();
@@ -1121,10 +1134,11 @@ critEl.addEventListener('change', e => {
     a.items.splice(ii, 1, ...parts); draftDirty = true; renderCriteria();
   }
   if (e.target.classList.contains('area-grp')){
-    // 묶음이 바뀌면 같은 묶음끼리 붙도록 다시 정렬
+    // 화면을 다시 그리면 커서가 빠지므로 여기서는 값만 반영. 정렬·묶음 표시는 저장할 때.
     const card = e.target.closest('.area-card');
     draftAreas[+card.dataset.i].group = e.target.value.trim();
-    draftAreas = clusterAreas(draftAreas); draftDirty = true; renderCriteria();
+    card.classList.toggle('grouped', !!e.target.value.trim());
+    markDraftDirty();
   }
 });
 critEl.addEventListener('click', e => {

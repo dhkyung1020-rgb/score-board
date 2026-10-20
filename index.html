@@ -78,6 +78,7 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .area-head .area-name{font-size:17px;font-weight:700;width:220px}
 .area-head .area-unit{width:70px}
 .mini{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.mini .field{color:var(--ink);font-size:14px}
 .rules{display:grid;gap:8px;margin-bottom:12px}
 .rule{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .rule input{width:76px;text-align:right}
@@ -125,6 +126,31 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 #termDlg select.field{display:block;width:100%;margin-top:6px}
 .term-note{margin-top:14px;padding:10px 12px;border-radius:10px;background:#f7f6f2;font-size:14px;line-height:1.6}
 .show-term{font-size:.5em;color:var(--muted);font-weight:600;margin-left:8px}
+.th-grp{font-size:11px;font-weight:700;color:#7a5a1c;background:#fbf1dc;border-radius:6px;padding:1px 6px;display:inline-block;margin-bottom:2px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.grid th.sub-col,.grid td.sub-col{background:#fdf7ea;font-weight:800;white-space:nowrap;border-left:1px solid #f0e2c0;border-right:1px solid #f0e2c0}
+.grid tbody tr:hover td.sub-col{background:#fbf1dc}
+.show-table td{white-space:nowrap}
+.show-table th{font-size:.8em;line-height:1.3;vertical-align:bottom}
+.show-table th.grp-th{background:#fbf1dc;color:#7a5a1c;border-radius:10px 10px 0 0;border-bottom:none}
+.show-table th.in-grp{background:#fdf9ef}
+.show-table th.sub-col,.show-table td.sub-col{background:#fdf7ea;font-weight:800;color:#7a5a1c}
+.grp-label{margin:10px 0 -4px;padding:8px 14px;background:#fbf1dc;border-radius:10px 10px 0 0;color:#7a5a1c;font-size:15px}
+.grp-label .muted{color:#a08550}
+.area-card.grouped{border-left:4px solid #e6c98a}
+.grp-end{height:4px}
+.area-head .area-grp{width:170px}
+.grp-card{grid-column:1/-1;background:#fdf7ea;border:1px solid #f0e2c0;border-radius:18px;padding:16px 18px 18px}
+#stage:fullscreen .grp-card{background:#fdf7ea}
+.grp-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.grp-name{font-size:clamp(18px,1.9vw,28px);font-weight:800;color:#7a5a1c}
+.grp-score{font-size:clamp(36px,4vw,64px);font-weight:800;letter-spacing:-.03em;line-height:1}
+.grp-score small{font-size:.4em;color:var(--muted);font-weight:700;margin-left:4px}
+.grp-score.none{color:#c5c2b9}
+.grp-bar{margin:10px 0 14px}
+.grp-bar i{background:#c89a3c}
+.grp-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.grp-tiles .tile{background:var(--panel);padding:14px 16px}
+.grp-tiles .t-score{font-size:clamp(32px,3.6vw,56px)}
 .miss-chk{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--muted);margin-right:6px;cursor:pointer;user-select:none}
 .miss-chk input{margin:0;accent-color:var(--warn)}
 .cell.missing .miss-chk{color:var(--warn);font-weight:700}
@@ -155,7 +181,7 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .stage-nav .pos{font-size:13px;color:var(--muted);margin:0 6px;min-width:52px;text-align:center}
 .stage-body{flex:1;display:flex;flex-direction:column;animation:rise .35s ease}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-.who{display:flex;align-items:baseline;gap:18px;margin-bottom:28px}
+.who{display:flex;align-items:baseline;gap:18px;margin-bottom:20px}
 .who-no{font-size:clamp(20px,2.4vw,34px);color:var(--muted);font-weight:600}
 .who-name{font-size:clamp(36px,5vw,76px);font-weight:800;letter-spacing:-.03em}
 .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px;flex:1;align-content:start}
@@ -361,7 +387,8 @@ function classesOf(grade){ return allGroups().filter(g => g.grade === grade).map
 
 function fixSel(){
   const groups = allGroups();
-  if (!sel){ sel = groups.length ? { grade: groups[0].grade, cls: groups[0].cls } : { grade: '', cls: '' }; }
+  // 아직 고른 반이 없으면 첫 번째 반으로 (명단이 비어 있으면 명단이 생길 때까지 기다림)
+  if (!sel || sel.auto){ sel = groups.length ? { grade: groups[0].grade, cls: groups[0].cls } : { grade: '', cls: '', auto: true }; }
   if (sel.grade && !groups.some(g => g.grade === sel.grade)) sel = { grade: '', cls: '' };
   if (sel.cls && !groups.some(g => g.grade === sel.grade && g.cls === sel.cls)) sel.cls = '';
   if (!sel.grade) sel.cls = '';
@@ -457,6 +484,47 @@ function studentTotal(s, withPending){
   }
   return any ? sum : null;
 }
+/* ---- 묶음(그룹): 같은 묶음 이름의 영역들을 한데 모으고 소계를 냄 ---- */
+// 묶음 순서는 처음 나온 자리 기준, 같은 묶음 영역은 붙여서 정렬
+function clusterAreas(areas){
+  const out = [], done = new Set();
+  areas.forEach(a => {
+    const g = (a.group || '').trim();
+    if (!g){ out.push(a); return; }
+    if (done.has(g)) return;
+    done.add(g);
+    areas.forEach(b => { if ((b.group || '').trim() === g) out.push(b); });
+  });
+  return out;
+}
+// [{ group: '주거 단원' | '', areas: [...] }, ...] 연속된 덩어리로
+function blocksOf(areas){
+  const blocks = [];
+  areas.forEach(a => {
+    const g = (a.group || '').trim(), last = blocks[blocks.length - 1];
+    if (g && last && last.group === g) last.areas.push(a);
+    else blocks.push({ group: g, areas: [a] });
+  });
+  return blocks;
+}
+function groupScore(s, members, withPending){
+  let sum = 0, any = false;
+  members.forEach(a => {
+    if (!applies(a, s)) return;
+    const sc = scoreFor(a, rawOf(s, a, withPending));
+    if (sc !== null){ sum += sc; any = true; }
+  });
+  return any ? sum : null;
+}
+function groupMax(members, grade){
+  const list = members.filter(a => !grade || !a.grade || a.grade === grade);
+  if (!list.length) return null;
+  let t = 0;
+  for (const a of list){ const m = maxFor(a); if (m === null) return null; t += m; }
+  return t;
+}
+function existingGroups(list){ return [...new Set((list || data.areas).map(a => (a.group || '').trim()).filter(Boolean))]; }
+
 function maxTotalFor(grade){
   const areas = data.areas.filter(a => !a.grade || a.grade === grade);
   if (!areas.length) return null;
@@ -501,6 +569,7 @@ function applyData(d){
       o.type = areaType(o);
       // 최하점: 예전 버전의 '기준 미달 점수'(fallback) / '최저점'(floor)을 이어받음
       o.lowest = isNum(a.lowest) ? Number(a.lowest) : o.type === 'deduct' ? numOr(a.floor, 0) : o.type === 'min' ? numOr(a.fallback, 0) : '';
+      o.group = String(a.group ?? '').trim();
       return o;
     }),
     students: (d.students || []).map(s => {
@@ -510,6 +579,7 @@ function applyData(d){
     }).sort(cmpStu),
     records: d.records || []
   };
+  data.areas = clusterAreas(data.areas);
   raws = new Map(data.records.map(r => [r.key + '|' + r.areaId, r.raw]));
   extraGroups = extraGroups.filter(g => !data.students.some(s => s.grade === g.grade && s.cls === g.cls));
   renderGroupSel();
@@ -708,8 +778,15 @@ function renderInput(){
     <button class="btn primary" id="saveRec">저장</button>
   </div>
   <div class="table-wrap"><table class="grid"><thead><tr><th class="c-no">번호</th><th class="c-name">이름</th>`;
-  areas.forEach(a => {
-    h += `<th class="cell"><div>${esc(a.name)}${sel.grade ? '' : gradeBadge(a)}</div><div class="th-rule" title="${esc(ruleText(a))}">${esc(ruleText(a))}</div></th>`;
+  const blocks = blocksOf(areas);
+  blocks.forEach(b => {
+    b.areas.forEach(a => {
+      h += `<th class="cell${b.group ? ' in-grp' : ''}">${b.group ? `<div class="th-grp">${esc(b.group)}</div>` : ''}<div>${esc(a.name)}${sel.grade ? '' : gradeBadge(a)}</div><div class="th-rule" title="${esc(ruleText(a))}">${esc(ruleText(a))}</div></th>`;
+    });
+    if (b.group){
+      const gm = groupMax(b.areas, sel.grade);
+      h += `<th class="sub-col"><div class="th-grp">${esc(b.group)}</div><div>소계</div>${gm !== null ? `<div class="th-rule">만점 ${fmt(gm)}점</div>` : ''}</th>`;
+    }
   });
   const mt = sel.grade ? maxTotalFor(sel.grade) : null;
   h += `<th>합계${mt !== null ? `<div class="th-rule">만점 ${fmt(mt)}점</div>` : ''}</th></tr></thead><tbody>`;
@@ -717,7 +794,8 @@ function renderInput(){
     const label = !sel.grade ? `${s.grade}-${s.cls}-${s.no}` : multiClass ? `${s.cls}-${s.no}` : s.no;
     const isOut = s.status === OUT;
     h += `<tr class="${isOut ? 'out-row' : ''}"><td class="c-no">${esc(label)}</td><td class="c-name">${esc(s.name)}${stBadge(s)}</td>`;
-    areas.forEach((a, j) => {
+    let j = -1;
+    blocks.forEach(b => { b.areas.forEach(a => { j++;
       if (!applies(a, s)){ h += `<td class="cell n-a">·</td>`; return; }
       const k = s.key + '|' + a.id;
       const changed = pending.has(k);
@@ -725,6 +803,8 @@ function renderInput(){
       const sc = scoreFor(a, v);
       const miss = v === MISS;
       h += `<td class="cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}"><input class="raw" data-r="${i}" data-c="${j}" data-k="${esc(k)}" value="${miss ? '' : esc(fmt(v))}" placeholder="${miss ? '미제출' : ''}" ${miss || isOut ? 'disabled' : ''} inputmode="decimal" autocomplete="off"><span class="unit">${esc(a.unit)}</span><label class="miss-chk" title="미제출 (x 키로도 표시)"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label><span class="sc">${sc === null ? '' : fmt(sc) + '점'}</span></td>`;
+    });
+      if (b.group){ const gs = groupScore(s, b.areas, true); h += `<td class="sub-col" data-sg="${esc(b.group)}" data-sr="${i}">${gs === null ? '–' : fmt(gs) + '점'}</td>`; }
     });
     const t = studentTotal(s, true);
     h += `<td class="total" data-t="${i}">${t === null ? '–' : fmt(t) + '점'}</td></tr>`;
@@ -763,6 +843,10 @@ function onRawInput(inp, forceVal){
   td.querySelector('.sc').textContent = sc === null ? '' : fmt(sc) + '점';
   const t = studentTotal(s, true);
   $(`td[data-t="${i}"]`).textContent = t === null ? '–' : fmt(t) + '점';
+  if (a.group){
+    const cell = $$(`td[data-sr="${i}"]`, inputEl).find(c => c.dataset.sg === a.group);
+    if (cell){ const gs = groupScore(s, visibleAreas().filter(x => x.group === a.group), true); cell.textContent = gs === null ? '–' : fmt(gs) + '점'; }
+  }
   updateSaveBtn();
 }
 
@@ -827,7 +911,7 @@ function renderCriteria(){
   const grades = allGrades();
 
   let h = `<div class="toolbar">
-    <div class="hint">영역마다 채점 방식을 골라요. <b>○개 이상</b>: 도장처럼 많을수록 높은 점수 · <b>개당 감점</b>: 시험처럼 틀린 개수만큼 감점 · <b>그대로</b>: 넣은 숫자가 곧 점수. <b>적용 학년</b>으로 2학년·3학년 영역을 나눌 수 있어요.</div>
+    <div class="hint">영역마다 채점 방식을 골라요. <b>○개 이상</b>: 도장처럼 많을수록 높은 점수 · <b>개당 감점</b>: 시험처럼 틀린 개수만큼 감점 · <b>그대로</b>: 넣은 숫자가 곧 점수. <b>적용 학년</b>으로 2학년·3학년 영역을 나눌 수 있어요. <b>묶음</b>에 같은 이름(예: 주거 단원 수행평가)을 적으면 소계가 함께 나와요.</div>
     <button class="btn" data-act="add-area">+ 영역 추가</button>
     <button class="btn ghost" data-act="revert" ${draftDirty ? '' : 'disabled'}>변경 취소</button>
     <button class="btn primary" data-act="save" ${draftDirty ? '' : 'disabled'}>기준 저장${draftDirty ? '<span class="dirty-dot"></span>' : ''}</button>
@@ -839,12 +923,23 @@ function renderCriteria(){
   }
 
   h += `<div class="areas">`;
+  const grpNames = existingGroups(draftAreas);
+  h += `<datalist id="grpList">${grpNames.map(g => `<option value="${esc(g)}">`).join('')}</datalist>`;
+  let lastGroup = null;
   draftAreas.forEach((a, i) => {
     const u = esc(a.unit);
     const gOpts = [...new Set([...grades, a.grade].filter(Boolean))].sort(cmpPart);
-    h += `<div class="card area-card" data-i="${i}">
+    const g = (a.group || '').trim();
+    if (g && g !== lastGroup){
+      const members = draftAreas.filter(x => (x.group || '').trim() === g);
+      const gm = groupMax(members, '');
+      h += `<div class="grp-label">📁 <b>${esc(g)}</b> <span class="muted">· ${members.length}개 영역${gm !== null ? ` · 묶음 만점 ${fmt(gm)}점` : ''}</span></div>`;
+    } else if (!g && lastGroup) h += `<div class="grp-end"></div>`;
+    lastGroup = g || null;
+    h += `<div class="card area-card${g ? ' grouped' : ''}" data-i="${i}">
       <div class="area-head">
         <input class="field area-name" value="${esc(a.name)}" placeholder="영역 이름 (예: 도장 모으기)">
+        <label class="mini">묶음 <input class="field area-grp" list="grpList" value="${esc(g)}" placeholder="없음"></label>
         <label class="mini">단위 <input class="field area-unit" value="${u}" placeholder="개"></label>
         <label class="mini">적용 <select class="field area-gr">
           <option value="">모든 학년</option>
@@ -918,6 +1013,7 @@ function onCritEdit(e){
   if (t.classList.contains('area-name')) a.name = v;
   else if (t.classList.contains('area-unit')){ a.unit = v; $$('.u', card).forEach(x => x.textContent = v); }
   else if (t.classList.contains('area-gr')) a.grade = v;
+  else if (t.classList.contains('area-grp')) a.group = v;
   else if (t.classList.contains('r-min')) a.rules[+t.dataset.ri].min = v.trim() === '' ? '' : (isNum(v) ? Number(v) : v);
   else if (t.classList.contains('r-score')) a.rules[+t.dataset.ri].score = v.trim() === '' ? '' : (isNum(v) ? Number(v) : v);
   else if (t.classList.contains('lowest')) a.lowest = v.trim() === '' ? '' : v;
@@ -928,7 +1024,15 @@ function onCritEdit(e){
   refreshCardInfo(card, a);
 }
 critEl.addEventListener('input', onCritEdit);
-critEl.addEventListener('change', e => { if (e.target.classList.contains('area-gr')) onCritEdit(e); });
+critEl.addEventListener('change', e => {
+  if (e.target.classList.contains('area-gr')) onCritEdit(e);
+  if (e.target.classList.contains('area-grp')){
+    // 묶음이 바뀌면 같은 묶음끼리 붙도록 다시 정렬
+    const card = e.target.closest('.area-card');
+    draftAreas[+card.dataset.i].group = e.target.value.trim();
+    draftAreas = clusterAreas(draftAreas); draftDirty = true; renderCriteria();
+  }
+});
 critEl.addEventListener('click', e => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
@@ -944,6 +1048,7 @@ critEl.addEventListener('click', e => {
   if (act === 'revert'){ draftAreas = clone(data.areas); draftDirty = false; renderCriteria(); return; }
   if (act === 'up' && i > 0){ [draftAreas[i - 1], draftAreas[i]] = [draftAreas[i], draftAreas[i - 1]]; }
   else if (act === 'down' && i < draftAreas.length - 1){ [draftAreas[i + 1], draftAreas[i]] = [draftAreas[i], draftAreas[i + 1]]; }
+  if (act === 'up' || act === 'down') draftAreas = clusterAreas(draftAreas);
   else if (act === 'del-area'){
     const a = draftAreas[i];
     const n = data.records.filter(r => r.areaId === a.id).length;
@@ -979,9 +1084,10 @@ async function saveAreas(){
     if (a.lowest !== '' && !isNum(a.lowest)){ toast(`'${a.name}'의 최하점이 숫자가 아니에요.`, 'err'); return false; }
     if (!isNum(a.gap)){ toast(`'${a.name}'의 미제출 차감 점수를 숫자로 채워 주세요.`, 'err'); return false; }
   }
+  draftAreas = clusterAreas(draftAreas);
   const areas = draftAreas.map(a => ({
     id: a.id, name: String(a.name).trim(), unit: String(a.unit || '').trim(), grade: norm(a.grade),
-    type: a.type, base: numOr(a.base, 0), per: numOr(a.per, 1),
+    type: a.type, base: numOr(a.base, 0), per: numOr(a.per, 1), group: String(a.group || '').trim(),
     lowest: isNum(a.lowest) ? Number(a.lowest) : '', gap: numOr(a.gap, 1),
     rules: a.rules.map(r => ({ min: Number(r.min), score: Number(r.score) }))
   }));
@@ -1438,14 +1544,26 @@ function renderStage(){
     $('#stagePos').textContent = '';
     const areas = visibleAreas();
     const multiClass = !sel.cls;
-    let h = `<h2 class="show-title">${esc(selLabel())} 점수 <span class="show-term">${esc(termLabel(currentTerm))}</span></h2><table class="show-table"><thead><tr>${multiClass ? '<th>반</th>' : ''}<th>번호</th><th class="l">이름</th>`;
-    areas.forEach(a => h += `<th>${esc(a.name)}</th>`);
-    h += `<th>합계</th></tr></thead><tbody>`;
+    const blocks = blocksOf(areas);
+    const two = blocks.some(b => b.group);
+    const rs = two ? ' rowspan="2"' : '';
+    let h = `<h2 class="show-title">${esc(selLabel())} 점수 <span class="show-term">${esc(termLabel(currentTerm))}</span></h2><table class="show-table"><thead><tr>${multiClass ? `<th${rs}>반</th>` : ''}<th${rs}>번호</th><th class="l"${rs}>이름</th>`;
+    let row2 = '';
+    blocks.forEach(b => {
+      if (!b.group){ b.areas.forEach(a => h += `<th${rs}>${esc(a.name)}</th>`); return; }
+      h += `<th class="grp-th" colspan="${b.areas.length + 1}">${esc(b.group)}</th>`;
+      b.areas.forEach(a => row2 += `<th class="in-grp">${esc(a.name)}</th>`);
+      row2 += `<th class="sub-col">소계</th>`;
+    });
+    h += `<th${rs}>합계</th></tr>${two ? `<tr>${row2}</tr>` : ''}</thead><tbody>`;
     studs.forEach(s => {
       h += `<tr>${multiClass ? `<td>${esc(sel.grade ? s.cls : s.grade + '-' + s.cls)}</td>` : ''}<td>${esc(s.no)}</td><td class="l">${esc(s.name)}</td>`;
-      areas.forEach(a => {
-        if (!applies(a, s)){ h += `<td class="n-a">·</td>`; return; }
-        const sc = scoreFor(a, rawOf(s, a, false)); h += `<td>${sc === null ? '–' : fmt(sc)}</td>`;
+      blocks.forEach(b => {
+        b.areas.forEach(a => {
+          if (!applies(a, s)){ h += `<td class="n-a">·</td>`; return; }
+          const sc = scoreFor(a, rawOf(s, a, false)); h += `<td>${sc === null ? '–' : fmt(sc)}</td>`;
+        });
+        if (b.group){ const gs = groupScore(s, b.areas, false); h += `<td class="sub-col">${gs === null ? '–' : fmt(gs)}</td>`; }
       });
       const t = studentTotal(s, false);
       h += `<td class="tot">${t === null ? '–' : fmt(t)}</td></tr>`;
@@ -1456,7 +1574,7 @@ function renderStage(){
     const s = studs[showIdx];
     $('#stagePos').textContent = `${showIdx + 1} / ${studs.length}`;
     const mt = maxTotalFor(s.grade);
-    const tiles = data.areas.filter(a => applies(a, s)).map(a => {
+    const tileOf = a => {
       const v = raws.get(s.key + '|' + a.id);
       const sc = scoreFor(a, v ?? '');
       const mx = maxFor(a);
@@ -1472,6 +1590,19 @@ function renderStage(){
         <div class="t-score${sc === null ? ' none' : ''}">${sc === null ? '–' : fmt(sc)}${sc === null ? '' : '<small>점</small>'}</div>
         ${mx !== null ? `<div class="t-bar"><i style="width:${pct}%"></i></div>` : ''}
         <div class="t-sub">${subs.join(' · ')}</div>
+      </div>`;
+    };
+    const tiles = blocksOf(data.areas.filter(a => applies(a, s))).map(b => {
+      if (!b.group) return b.areas.map(tileOf).join('');
+      const gs = groupScore(s, b.areas, false), gm = groupMax(b.areas, s.grade);
+      const pct = (gs !== null && gm) ? Math.max(0, Math.min(100, gs / gm * 100)) : 0;
+      return `<div class="grp-card">
+        <div class="grp-head">
+          <span class="grp-name">${esc(b.group)}</span>
+          <span class="grp-score${gs === null ? ' none' : ''}">${gs === null ? '–' : fmt(gs)}<small>${gm !== null ? ` / ${fmt(gm)}점` : '점'}</small></span>
+        </div>
+        ${gm !== null ? `<div class="t-bar grp-bar"><i style="width:${pct}%"></i></div>` : ''}
+        <div class="grp-tiles">${b.areas.map(tileOf).join('')}</div>
       </div>`;
     }).join('');
     const t = studentTotal(s, false);

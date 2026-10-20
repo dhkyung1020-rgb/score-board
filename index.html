@@ -151,6 +151,24 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .grp-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
 .grp-tiles .tile{background:var(--panel);padding:14px 16px}
 .grp-tiles .t-score{font-size:clamp(32px,3.6vw,56px)}
+.cell.items-cell{min-width:300px;max-width:420px;padding-top:8px;padding-bottom:8px}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;color:var(--muted);white-space:nowrap;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+.chip:hover{border-color:var(--accent)}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
+.chip.on::before{content:'✓ '}
+.chip:disabled{opacity:.4;cursor:default}
+.items-foot{display:flex;align-items:center;gap:6px;margin-top:6px}
+.items-foot .cnt{font-size:12px;font-weight:700;color:var(--accent);min-width:34px}
+.chip-clear{border:0;background:transparent;color:var(--muted);font-size:12px;cursor:pointer;text-decoration:underline;margin-left:auto}
+.items-edit{display:grid;gap:8px;margin-bottom:6px}
+.items-edit .rule input.item-name{width:260px;text-align:left}
+.item-no{width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.mini-title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mini-title .muted{font-weight:400;font-size:13px}
+.t-items{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.t-items span{font-size:clamp(11px,1vw,15px);padding:2px 9px;border-radius:999px;background:#efede7;color:#9a978f}
+.t-items span.ok{background:var(--accent-soft);color:var(--accent);font-weight:700}
 .miss-chk{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--muted);margin-right:6px;cursor:pointer;user-select:none}
 .miss-chk input{margin:0;accent-color:var(--warn)}
 .cell.missing .miss-chk{color:var(--warn);font-weight:700}
@@ -435,14 +453,28 @@ function visibleAreas(){ return sel.grade ? data.areas.filter(a => !a.grade || a
 //      'direct': 입력값이 그대로 점수
 const numOr = (v, d) => isNum(v) ? Number(v) : d;
 function validRules(area){ return (area.rules || []).filter(r => isNum(r.min) && isNum(r.score)); }
+// 항목별 채점: 원값은 '#101101' (맞힌 항목 = 1)
+const isItemsRaw = v => typeof v === 'string' && /^#[01]*$/.test(v);
+function itemBits(a, raw){
+  const n = (a.items || []).length, b = isItemsRaw(raw) ? raw.slice(1) : '';
+  return Array.from({ length: n }, (_, i) => b[i] === '1');
+}
+const bitsToRaw = bits => '#' + bits.map(x => x ? '1' : '0').join('');
 function areaType(a){
-  if (a.type === 'min' || a.type === 'deduct' || a.type === 'direct') return a.type;
+  if (a.type === 'min' || a.type === 'deduct' || a.type === 'direct' || a.type === 'items') return a.type;
   return validRules(a).length ? 'min' : 'direct';
 }
 // 미제출 = 최하점보다 gap점 낮은 점수(차하점), 0점 아래로는 내려가지 않음
 function missingScore(area){ return Math.max(0, numOr(area.lowest, 0) - numOr(area.gap, 1)); }
 function scoreFor(area, raw){
   if (raw === MISS) return missingScore(area);
+  if (areaType(area) === 'items'){
+    if (!isItemsRaw(raw)) return null;
+    const cnt = itemBits(area, raw).filter(Boolean).length, rules = validRules(area);
+    if (!rules.length) return cnt;   // 기준이 없으면 맞힌 개수 = 점수
+    for (const r of rules.slice().sort((x, y) => y.min - x.min)) if (cnt >= Number(r.min)) return Number(r.score);
+    return numOr(area.lowest, 0);
+  }
   if (!isNum(raw)) return null;
   const n = Number(raw), type = areaType(area);
   const low = isNum(area.lowest) ? Number(area.lowest) : null;
@@ -455,6 +487,10 @@ function scoreFor(area, raw){
 }
 function maxFor(area){
   const type = areaType(area);
+  if (type === 'items'){
+    const rules = validRules(area);
+    return rules.length ? Math.max(...rules.map(r => Number(r.score)), numOr(area.lowest, 0)) : (area.items || []).length;
+  }
   if (type === 'deduct') return numOr(area.base, 0);
   const rules = validRules(area);
   if (type === 'direct' || !rules.length) return null;
@@ -463,6 +499,11 @@ function maxFor(area){
 function ruleText(area){
   const miss = ` · 미제출 ${fmt(missingScore(area))}점`;
   const type = areaType(area);
+  if (type === 'items'){
+    const n = (area.items || []).length, rules = validRules(area);
+    if (!rules.length) return `${n}개 항목 · 맞힌 개수 = 점수` + miss;
+    return `${n}개 항목 · ` + rules.slice().sort((a, b) => b.min - a.min).map(r => `${fmt(r.min)}개 이상 → ${fmt(r.score)}점`).join(' · ') + ` · 그 외(최하) ${fmt(numOr(area.lowest, 0))}점` + miss;
+  }
   if (type === 'deduct') return `만점 ${fmt(numOr(area.base, 0))}점에서 ${area.unit || '개'}당 ${fmt(numOr(area.per, 1))}점 감점 · 최하 ${fmt(numOr(area.lowest, 0))}점` + miss;
   const rules = validRules(area);
   if (type === 'direct' || !rules.length) return '입력한 값이 그대로 점수' + (isNum(area.lowest) ? ` · 최하 ${fmt(area.lowest)}점` : '') + miss;
@@ -570,6 +611,7 @@ function applyData(d){
       // 최하점: 예전 버전의 '기준 미달 점수'(fallback) / '최저점'(floor)을 이어받음
       o.lowest = isNum(a.lowest) ? Number(a.lowest) : o.type === 'deduct' ? numOr(a.floor, 0) : o.type === 'min' ? numOr(a.fallback, 0) : '';
       o.group = String(a.group ?? '').trim();
+      o.items = Array.isArray(a.items) ? a.items.map(x => String(x)) : [];
       return o;
     }),
     students: (d.students || []).map(s => {
@@ -643,7 +685,7 @@ function demoApi(action, p){
     const m = new Map(td.records.map(r => [r.key + '|' + r.areaId, r]));
     for (const c of p.records){
       const k = c.key + '|' + c.areaId;
-      if (c.raw === MISS) m.set(k, { key: c.key, areaId: c.areaId, raw: MISS });
+      if (c.raw === MISS || isItemsRaw(c.raw)) m.set(k, { key: c.key, areaId: c.areaId, raw: c.raw });
       else if (!isNum(c.raw)) m.delete(k); else m.set(k, { key: c.key, areaId: c.areaId, raw: Number(c.raw) });
     }
     td.records = [...m.values()];
@@ -802,7 +844,14 @@ function renderInput(){
       const v = rawOf(s, a, true);
       const sc = scoreFor(a, v);
       const miss = v === MISS;
-      h += `<td class="cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}"><input class="raw" data-r="${i}" data-c="${j}" data-k="${esc(k)}" value="${miss ? '' : esc(fmt(v))}" placeholder="${miss ? '미제출' : ''}" ${miss || isOut ? 'disabled' : ''} inputmode="decimal" autocomplete="off"><span class="unit">${esc(a.unit)}</span><label class="miss-chk" title="미제출 (x 키로도 표시)"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label><span class="sc">${sc === null ? '' : fmt(sc) + '점'}</span></td>`;
+      if (areaType(a) === 'items'){
+        const bits = itemBits(a, v), cnt = bits.filter(Boolean).length;
+        h += `<td class="cell items-cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}">
+          <div class="chips">${a.items.map((nm, bi) => `<button type="button" class="chip${bits[bi] ? ' on' : ''}" data-b="${bi}" ${miss || isOut ? 'disabled' : ''} title="${esc(nm)}">${esc(nm)}</button>`).join('')}</div>
+          <div class="items-foot"><span class="cnt">${isItemsRaw(v) ? `${cnt}/${a.items.length}개` : ''}</span><label class="miss-chk"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label><span class="sc">${sc === null ? '' : fmt(sc) + '점'}</span>${isOut ? '' : `<button type="button" class="chip-clear" title="이 칸 비우기">지우기</button>`}</div></td>`;
+        return;
+      }
+      h += `<td class="cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}"><input class="raw" data-r="${i}" data-c="${j}" data-k="${esc(k)}" value="${miss ? '' : esc(fmt(v))}" placeholder="${miss ? '미제출' : ''}" ${miss || isOut ? 'disabled' : ''} inputmode="decimal" autocomplete="off"><span class="unit">${esc(a.unit)}</span><label class="miss-chk" title="미제출 (x 키로도 표시)"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label><span class="sc">${sc === null ? '' : fmt(sc) + '점'}</span></td>`;
     });
       if (b.group){ const gs = groupScore(s, b.areas, true); h += `<td class="sub-col" data-sg="${esc(b.group)}" data-sr="${i}">${gs === null ? '–' : fmt(gs) + '점'}</td>`; }
     });
@@ -831,14 +880,28 @@ function onRawInput(inp, forceVal){
   const ok = val === '' || val === MISS || isNum(val);
   inp.classList.toggle('bad', !ok);
   if (!ok) return;
-  const saved = raws.has(k) ? fmt(raws.get(k)) : '';
-  if (val === saved) pending.delete(k); else pending.set(k, val === '' || val === MISS ? val : Number(val));
+  const miss = val === MISS;
+  inp.disabled = miss; inp.placeholder = miss ? '미제출' : '';
+  if (miss) inp.value = '';
+  commitCell(td, val === '' || val === MISS ? val : Number(val));
+  void k; void a; void s;
+}
+
+// 칸 값 바꾸기 (숫자 칸 · 항목 칸 공통): 저장 대기 목록, 점수, 소계, 합계 갱신
+function commitCell(td, val){
+  const k = td.dataset.k, i = +td.dataset.r, j = +td.dataset.c;
+  const a = visibleAreas()[j], s = inputStudents()[i];
+  const saved = raws.has(k) ? String(raws.get(k)) : '';
+  if (String(val) === saved) pending.delete(k); else pending.set(k, val);
   const miss = val === MISS;
   td.classList.toggle('missing', miss);
   $('.miss', td).checked = miss;
-  inp.disabled = miss; inp.placeholder = miss ? '미제출' : '';
-  if (miss) inp.value = '';
   td.classList.toggle('changed', pending.has(k));
+  if (td.classList.contains('items-cell')){
+    const bits = itemBits(a, val);
+    $$('.chip', td).forEach((c, bi) => { c.classList.toggle('on', !!bits[bi]); c.disabled = miss; });
+    $('.cnt', td).textContent = isItemsRaw(val) ? `${bits.filter(Boolean).length}/${bits.length}개` : '';
+  }
   const sc = scoreFor(a, val);
   td.querySelector('.sc').textContent = sc === null ? '' : fmt(sc) + '점';
   const t = studentTotal(s, true);
@@ -874,9 +937,22 @@ const inputEl = $('#tab-input');
 inputEl.addEventListener('input', e => { if (e.target.classList.contains('raw')) onRawInput(e.target); });
 inputEl.addEventListener('change', e => {
   if (!e.target.classList.contains('miss')) return;
-  const inp = $('.raw', e.target.closest('td'));
+  const td = e.target.closest('td'), inp = $('.raw', td);
+  if (!inp){ commitCell(td, e.target.checked ? MISS : ''); return; }
   onRawInput(inp, e.target.checked ? MISS : '');
   if (!e.target.checked){ inp.focus(); }
+});
+// 항목 버튼 누르기 → 맞힘/안 맞힘
+inputEl.addEventListener('click', e => {
+  const chip = e.target.closest('.chip'), clr = e.target.closest('.chip-clear');
+  if (!chip && !clr) return;
+  const td = e.target.closest('td'), k = td.dataset.k;
+  if (clr){ commitCell(td, ''); return; }
+  const a = visibleAreas()[+td.dataset.c];
+  const cur = pending.has(k) ? pending.get(k) : (raws.get(k) ?? '');
+  const bits = itemBits(a, cur);
+  bits[+chip.dataset.b] = !bits[+chip.dataset.b];
+  commitCell(td, bitsToRaw(bits));
 });
 inputEl.addEventListener('keydown', e => {
   const t = e.target;
@@ -911,7 +987,7 @@ function renderCriteria(){
   const grades = allGrades();
 
   let h = `<div class="toolbar">
-    <div class="hint">영역마다 채점 방식을 골라요. <b>○개 이상</b>: 도장처럼 많을수록 높은 점수 · <b>개당 감점</b>: 시험처럼 틀린 개수만큼 감점 · <b>그대로</b>: 넣은 숫자가 곧 점수. <b>적용 학년</b>으로 2학년·3학년 영역을 나눌 수 있어요. <b>묶음</b>에 같은 이름(예: 주거 단원 수행평가)을 적으면 소계가 함께 나와요.</div>
+    <div class="hint">영역마다 채점 방식을 골라요. <b>○개 이상</b>: 도장처럼 많을수록 높은 점수 · <b>개당 감점</b>: 시험처럼 틀린 개수만큼 감점 · <b>항목별 채점</b>: 맞힌 항목을 눌러서 개수로 채점 · <b>그대로</b>: 넣은 숫자가 곧 점수. <b>적용 학년</b>으로 2학년·3학년 영역을 나눌 수 있어요. <b>묶음</b>에 같은 이름(예: 주거 단원 수행평가)을 적으면 소계가 함께 나와요.</div>
     <button class="btn" data-act="add-area">+ 영역 추가</button>
     <button class="btn ghost" data-act="revert" ${draftDirty ? '' : 'disabled'}>변경 취소</button>
     <button class="btn primary" data-act="save" ${draftDirty ? '' : 'disabled'}>기준 저장${draftDirty ? '<span class="dirty-dot"></span>' : ''}</button>
@@ -954,6 +1030,7 @@ function renderCriteria(){
         <div class="seg">
           <button data-act="type" data-type="min" class="${a.type === 'min' ? 'on' : ''}">○개 이상 → □점</button>
           <button data-act="type" data-type="deduct" class="${a.type === 'deduct' ? 'on' : ''}">개당 감점</button>
+          <button data-act="type" data-type="items" class="${a.type === 'items' ? 'on' : ''}">항목별 채점</button>
           <button data-act="type" data-type="direct" class="${a.type === 'direct' ? 'on' : ''}">입력값 그대로</button>
         </div>
       </div>
@@ -965,23 +1042,30 @@ function renderCriteria(){
         <div class="rule">틀린 것 1<span class="u">${u || '개'}</span>당 <input class="field d-per" value="${esc(a.per)}" inputmode="decimal"> 점 감점</div>
 `;
     } else {
+      if (a.type === 'items'){
+        h += `<div class="items-edit"><div class="mini-title">채점 항목 <span class="muted">(점수 입력 칸에 버튼으로 나와요 · "가 / 나 / 다"처럼 한 번에 붙여넣어도 돼요)</span></div>` +
+          a.items.map((nm, ii) => `<div class="rule"><span class="item-no">${ii + 1}</span><input class="field item-name" data-ii="${ii}" value="${esc(nm)}" placeholder="예: 입체적 활용"><button class="icon-btn" data-act="del-item" data-ii="${ii}" title="항목 삭제">✕</button></div>`).join('') +
+          `<div><button class="btn sm" data-act="add-item">+ 항목 추가</button></div></div>
+          <div class="mini-title">맞힌 개수에 따른 점수 <button class="btn sm ghost" data-act="auto-rules">개수 = 점수로 채우기</button></div>`;
+        if (!a.rules.length) h += `<div class="direct">기준을 비워두면 맞힌 개수가 그대로 점수예요.</div>`;
+      }
       a.rules.forEach((r, ri) => {
         h += `<div class="rule">
-          <input class="field r-min" data-ri="${ri}" value="${esc(r.min)}" inputmode="decimal"><span class="u">${u}</span> 이상이면
+          ${a.type === 'items' ? '맞힌 항목' : ''}<input class="field r-min" data-ri="${ri}" value="${esc(r.min)}" inputmode="decimal"><span class="u">${a.type === 'items' ? '개' : u}</span> 이상이면
           <input class="field r-score" data-ri="${ri}" value="${esc(r.score)}" inputmode="decimal"> 점
           <button class="icon-btn" data-act="del-rule" data-ri="${ri}" title="이 줄 삭제">✕</button>
         </div>`;
       });
     }
-    if (a.type === 'min') h += `<div><button class="btn sm" data-act="add-rule">+ 기준 줄 추가</button></div>`;
+    if (a.type === 'min' || a.type === 'items') h += `<div><button class="btn sm" data-act="add-rule">+ 기준 줄 추가</button></div>`;
     h += `</div>
       <div class="lowest-box">
         <div class="rule"><b>최하점</b> <input class="field lowest" value="${esc(a.lowest)}" inputmode="decimal" placeholder="${a.type === 'direct' ? '없음' : '0'}"> 점
-          <span class="muted">${a.type === 'min' ? '어느 기준에도 못 미치면 최하점을 줘요.' : a.type === 'deduct' ? '감점해도 최하점 아래로는 내려가지 않아요.' : '비워두면 최하점 제한 없음.'}</span></div>
+          <span class="muted">${a.type === 'min' || a.type === 'items' ? '어느 기준에도 못 미치면 최하점을 줘요.' : a.type === 'deduct' ? '감점해도 최하점 아래로는 내려가지 않아요.' : '비워두면 최하점 제한 없음.'}</span></div>
         <div class="rule"><b>미제출</b> 최하점보다 <input class="field gap" value="${esc(a.gap)}" inputmode="decimal"> 점 낮은 차하점 → <b class="miss-out">${fmt(missingScore(a))}점</b></div>
       </div>
       <div class="area-foot">
-        <div class="tester">확인해 보기: ${a.type === 'deduct' ? '틀린 개수' : ''} <input class="field t-raw" inputmode="decimal" placeholder="숫자"><span class="u">${u}</span> → <b class="t-out">–</b></div>
+        <div class="tester">확인해 보기: ${a.type === 'deduct' ? '틀린 개수' : a.type === 'items' ? '맞힌 개수' : ''} <input class="field t-raw" inputmode="decimal" placeholder="숫자"><span class="u">${u}</span> → <b class="t-out">–</b></div>
         <div class="summary-line">${esc(ruleText(a))}</div>
       </div>
     </div>`;
@@ -998,7 +1082,9 @@ function markDraftDirty(){
   if (rev) rev.disabled = false;
 }
 function refreshCardInfo(card, a){
-  const sc = scoreFor(a, $('.t-raw', card).value.trim());
+  let tv = $('.t-raw', card).value.trim();
+  if (a.type === 'items' && isNum(tv)){ const n = a.items.length, c = Math.max(0, Math.min(n, Number(tv))); tv = '#' + '1'.repeat(c) + '0'.repeat(n - c); }
+  const sc = scoreFor(a, tv);
   $('.t-out', card).textContent = sc === null ? '–' : fmt(sc) + '점';
   $('.summary-line', card).textContent = ruleText(a);
   $('.miss-out', card).textContent = fmt(missingScore(a)) + '점';
@@ -1014,6 +1100,7 @@ function onCritEdit(e){
   else if (t.classList.contains('area-unit')){ a.unit = v; $$('.u', card).forEach(x => x.textContent = v); }
   else if (t.classList.contains('area-gr')) a.grade = v;
   else if (t.classList.contains('area-grp')) a.group = v;
+  else if (t.classList.contains('item-name')) a.items[+t.dataset.ii] = v;
   else if (t.classList.contains('r-min')) a.rules[+t.dataset.ri].min = v.trim() === '' ? '' : (isNum(v) ? Number(v) : v);
   else if (t.classList.contains('r-score')) a.rules[+t.dataset.ri].score = v.trim() === '' ? '' : (isNum(v) ? Number(v) : v);
   else if (t.classList.contains('lowest')) a.lowest = v.trim() === '' ? '' : v;
@@ -1026,6 +1113,13 @@ function onCritEdit(e){
 critEl.addEventListener('input', onCritEdit);
 critEl.addEventListener('change', e => {
   if (e.target.classList.contains('area-gr')) onCritEdit(e);
+  if (e.target.classList.contains('item-name') && e.target.value.includes('/') && !e.target.dataset.split){
+    e.target.dataset.split = '1';   // 다시 그릴 때 한 번 더 불리는 것 막기
+    // "가 / 나 / 다" 를 여러 항목으로 나누기
+    const a = draftAreas[+e.target.closest('.area-card').dataset.i], ii = +e.target.dataset.ii;
+    const parts = e.target.value.split('/').map(x => x.trim()).filter(Boolean);
+    a.items.splice(ii, 1, ...parts); draftDirty = true; renderCriteria();
+  }
   if (e.target.classList.contains('area-grp')){
     // 묶음이 바뀌면 같은 묶음끼리 붙도록 다시 정렬
     const card = e.target.closest('.area-card');
@@ -1039,7 +1133,7 @@ critEl.addEventListener('click', e => {
   const act = b.dataset.act, card = b.closest('.area-card');
   const i = card ? +card.dataset.i : -1;
   if (act === 'add-area'){
-    draftAreas.push({ id: 'A' + Date.now().toString(36), name: '', unit: '', type: 'min', rules: [{ min: '', score: '' }], lowest: 0, gap: 1, base: 20, per: 1, grade: sel.grade || '' });
+    draftAreas.push({ id: 'A' + Date.now().toString(36), name: '', unit: '', type: 'min', rules: [{ min: '', score: '' }], items: [], lowest: 0, gap: 1, base: 20, per: 1, grade: sel.grade || '' });
     draftDirty = true; renderCriteria();
     const cards = $$('.area-card', critEl); $('.area-name', cards[cards.length - 1]).focus();
     return;
@@ -1057,6 +1151,12 @@ critEl.addEventListener('click', e => {
     draftAreas.splice(i, 1);
   }
   else if (act === 'add-rule'){ draftAreas[i].rules.push({ min: '', score: '' }); }
+  else if (act === 'add-item'){ draftAreas[i].items.push(''); }
+  else if (act === 'del-item'){ draftAreas[i].items.splice(+b.dataset.ii, 1); }
+  else if (act === 'auto-rules'){
+    const a = draftAreas[i], n = a.items.filter(x => x.trim()).length;
+    a.rules = Array.from({ length: n }, (_, x) => ({ min: n - x, score: n - x })); a.lowest = 0;
+  }
   else if (act === 'type'){
     const a = draftAreas[i];
     const prevMax = maxFor(a);
@@ -1064,6 +1164,7 @@ critEl.addEventListener('click', e => {
     if (a.type === 'deduct' && !numOr(a.base, 0)) a.base = prevMax || 20;
     if (a.type === 'deduct' && !numOr(a.per, 0)) a.per = 1;
     if (a.type === 'min' && !a.rules.length) a.rules.push({ min: '', score: '' });
+    if (a.type === 'items'){ a.items = a.items || []; if (!a.items.length) a.items.push(''); }
   }
   else if (act === 'del-rule'){ draftAreas[i].rules.splice(+b.dataset.ri, 1); }
   else return;
@@ -1075,6 +1176,12 @@ async function saveAreas(){
   for (const a of draftAreas){
     if (!String(a.name).trim()){ toast('이름이 비어 있는 영역이 있어요.', 'err'); return false; }
     a.rules = a.rules.filter(r => !(r.min === '' && r.score === ''));
+    a.items = (a.items || []).map(x => String(x).trim()).filter(Boolean);
+    if (a.type === 'items'){
+      if (!a.items.length){ toast(`'${a.name}'에 채점 항목을 하나 이상 적어 주세요.`, 'err'); renderCriteria(); return false; }
+      if (a.rules.some(r => !isNum(r.min) || !isNum(r.score))){ toast(`'${a.name}' 기준에 숫자가 아닌 칸이 있어요.`, 'err'); renderCriteria(); return false; }
+      if (!isNum(a.lowest)) a.lowest = 0;
+    }
     if (a.type === 'min'){
       if (a.rules.some(r => !isNum(r.min) || !isNum(r.score))){ toast(`'${a.name}' 기준에 숫자가 아닌 칸이 있어요.`, 'err'); renderCriteria(); return false; }
       if (!a.rules.length){ toast(`'${a.name}'에 기준 줄을 하나 이상 넣거나, 방식을 "입력값 그대로"로 바꿔 주세요.`, 'err'); renderCriteria(); return false; }
@@ -1087,7 +1194,7 @@ async function saveAreas(){
   draftAreas = clusterAreas(draftAreas);
   const areas = draftAreas.map(a => ({
     id: a.id, name: String(a.name).trim(), unit: String(a.unit || '').trim(), grade: norm(a.grade),
-    type: a.type, base: numOr(a.base, 0), per: numOr(a.per, 1), group: String(a.group || '').trim(),
+    type: a.type, base: numOr(a.base, 0), per: numOr(a.per, 1), group: String(a.group || '').trim(), items: a.type === 'items' ? a.items : [],
     lowest: isNum(a.lowest) ? Number(a.lowest) : '', gap: numOr(a.gap, 1),
     rules: a.rules.map(r => ({ min: Number(r.min), score: Number(r.score) }))
   }));
@@ -1583,6 +1690,7 @@ function renderStage(){
       else if (v === MISS) subs.push('미제출');
       else if (areaType(a) === 'min') subs.push(`${esc(fmt(v))}${esc(a.unit)}`);
       else if (areaType(a) === 'deduct') subs.push(Number(v) ? `${esc(fmt(v))}${esc(a.unit || '개')} 틀림` : '모두 맞음');
+      else if (areaType(a) === 'items') subs.push(`${itemBits(a, v).filter(Boolean).length}/${a.items.length}개 항목`);
       if (mx !== null) subs.push(`만점 ${fmt(mx)}점`);
       const pct = (sc !== null && mx) ? Math.max(0, Math.min(100, sc / mx * 100)) : 0;
       return `<div class="tile${v === MISS ? ' missing' : ''}">
@@ -1590,6 +1698,7 @@ function renderStage(){
         <div class="t-score${sc === null ? ' none' : ''}">${sc === null ? '–' : fmt(sc)}${sc === null ? '' : '<small>점</small>'}</div>
         ${mx !== null ? `<div class="t-bar"><i style="width:${pct}%"></i></div>` : ''}
         <div class="t-sub">${subs.join(' · ')}</div>
+        ${areaType(a) === 'items' && isItemsRaw(v) ? `<div class="t-items">${(() => { const bits = itemBits(a, v); return a.items.map((nm, bi) => `<span class="${bits[bi] ? 'ok' : ''}">${bits[bi] ? '✓ ' : ''}${esc(nm)}</span>`).join(''); })()}</div>` : ''}
       </div>`;
     };
     const tiles = blocksOf(data.areas.filter(a => applies(a, s))).map(b => {

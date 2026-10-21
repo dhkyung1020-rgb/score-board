@@ -194,6 +194,27 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .warn-txt{color:var(--warn);font-size:13px;font-weight:600;margin-bottom:4px}
 .warn-txt small{font-weight:400;color:#9a5a33}
 .ok-txt{color:var(--accent);font-weight:700;font-size:13px}
+.abs-chk{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--muted);margin-right:6px;cursor:pointer;user-select:none}
+.abs-chk input{margin:0;accent-color:#4a5fa8}
+.cell.absent .abs-chk{color:#3a4f9a;font-weight:700}
+.cell.absent .raw{background:#eef1fb;border-color:#c9d1ee}
+.cell.absent .raw::placeholder{color:#3a4f9a;font-weight:700;font-size:12px}
+.cell.absent .sc{background:#eef1fb;color:#3a4f9a}
+.grid td.total.has-abs::after{content:' (결시)';font-size:11px;color:#3a4f9a;font-weight:700}
+.btn.abs-on{background:#eef1fb;border-color:#c9d1ee;color:#3a4f9a}
+.abs-panel{padding:12px 16px;margin:-4px 0 12px;border-color:#c9d1ee;background:#f7f8fd}
+.abs-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.abs-head .muted{font-size:13px}
+.abs-only{font-size:14px;display:flex;align-items:center;gap:6px;cursor:pointer;color:#3a4f9a;font-weight:600}
+.abs-row{display:flex;gap:10px;align-items:baseline;padding:5px 0;border-top:1px solid #e3e7f5;font-size:14px;flex-wrap:wrap}
+.abs-area{font-weight:700;min-width:180px}
+.abs-area small{color:var(--muted);font-weight:400}
+.abs-n{color:#3a4f9a;font-weight:800;min-width:40px}
+.abs-names{color:var(--ink)}
+.tile.absent .t-sub{color:#3a4f9a;font-weight:700}
+.show-table td.abs-td{color:#3a4f9a;font-weight:700;font-size:.85em}
+.abs-txt{color:#3a4f9a}
+.abs-txt small{color:#5a6aa0}
 .miss-chk{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--muted);margin-right:6px;cursor:pointer;user-select:none}
 .miss-chk input{margin:0;accent-color:var(--warn)}
 .cell.missing .miss-chk{color:var(--warn);font-weight:700}
@@ -385,8 +406,8 @@ const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clone = o => JSON.parse(JSON.stringify(o));
-const MISS = '미제출';
-const fmt = n => (n === null || n === undefined || n === '') ? '' : n === MISS ? MISS : (Number.isInteger(Number(n)) ? String(Number(n)) : String(+Number(n).toFixed(2)));
+const MISS = '미제출', ABS = '결시';
+const fmt = n => (n === null || n === undefined || n === '') ? '' : n === MISS ? MISS : n === ABS ? ABS : (Number.isInteger(Number(n)) ? String(Number(n)) : String(+Number(n).toFixed(2)));
 const isNum = v => v !== '' && v !== null && v !== undefined && isFinite(Number(v));
 // '2학년'→'2', '03반'→'3', '15번'→'15'
 const norm = v => { const t = String(v ?? '').trim().replace(/\s*(학년|반|번)$/, '').trim(); return /^\d+$/.test(t) ? String(Number(t)) : t; };
@@ -484,7 +505,14 @@ function inSel(s){ return (!sel.grade || s.grade === sel.grade) && (!sel.cls || 
 // 재학 + 전입 (전출 제외) — 화면 보기와 합계용
 function visibleStudents(){ return data.students.filter(s => inSel(s) && s.status !== OUT); }
 // 점수 입력 표에 나오는 학생 (전출생은 '보기'를 켰을 때만)
-function inputStudents(){ return data.students.filter(s => inSel(s) && (showOut || s.status !== OUT)); }
+function inputStudents(){
+  return data.students.filter(s => inSel(s) && (showOut || s.status !== OUT) && (!absOnly || hasAbs(s, inputAreas())));
+}
+// 결시 모아보기
+let absOnly = false, absPanel = false;
+function hasAbs(s, areas){ return areas.some(a => applies(a, s) && rawOf(s, a, true) === ABS); }
+// 점수 입력 표를 그릴 때의 학생·영역 목록 (입력 중에 목록이 바뀌어도 칸이 어긋나지 않도록 고정)
+let curStuds = [], curAreas = [];
 // 영역이 이 학생(또는 {grade, cls})에게 적용되나: 적용 학년 + 적용 반 (반 목록이 비어 있으면 모든 반)
 function applies(a, s){
   if (a.grade && a.grade !== s.grade) return false;
@@ -539,6 +567,7 @@ function areaType(a){
 // 미제출 = 최하점보다 gap점 낮은 점수(차하점), 0점 아래로는 내려가지 않음
 function missingScore(area){ return Math.max(0, numOr(area.lowest, 0) - numOr(area.gap, 1)); }
 function scoreFor(area, raw){
+  if (raw === ABS) return null;          // 결시: 점수 없음 (나중에 재평가 점수 입력)
   if (raw === MISS) return missingScore(area);
   if (areaType(area) === 'items'){
     if (!isItemsRaw(raw)) return null;
@@ -674,9 +703,11 @@ async function api(action, payload = {}){
 }
 
 // 이 웹페이지가 기대하는 시트 코드(Code.gs) 버전
-const SERVER_VERSION = 10;
+const SERVER_VERSION = 11;
+let serverVersion = 99;
 function checkServerVersion(d){
-  const old = !cfg.demo && (Number(d.version) || 0) < SERVER_VERSION;
+  serverVersion = cfg.demo ? 99 : (Number(d.version) || 0);
+  const old = !cfg.demo && serverVersion < SERVER_VERSION;
   $('#verWarn').hidden = !old;
 }
 function applyData(d){
@@ -767,7 +798,7 @@ function demoApi(action, p){
     const m = new Map(td.records.map(r => [r.key + '|' + r.areaId, r]));
     for (const c of p.records){
       const k = c.key + '|' + c.areaId;
-      if (c.raw === MISS || isItemsRaw(c.raw)) m.set(k, { key: c.key, areaId: c.areaId, raw: c.raw });
+      if (c.raw === MISS || c.raw === ABS || isItemsRaw(c.raw)) m.set(k, { key: c.key, areaId: c.areaId, raw: c.raw });
       else if (!isNum(c.raw)) m.delete(k); else m.set(k, { key: c.key, areaId: c.areaId, raw: Number(c.raw) });
     }
     td.records = [...m.values()];
@@ -891,13 +922,22 @@ function renderInput(){
   const msg = needSetupMsg();
   if (msg){ el.innerHTML = msg; return; }
   const studs = inputStudents(), areas = inputAreas();
+  curStuds = studs; curAreas = areas;
   const multiClass = !sel.cls;
+  // 결시생 (표에 보이는 영역 기준, 전출 제외)
+  const absList = [];
+  areas.forEach(a => {
+    const who = data.students.filter(s => inSel(s) && s.status !== OUT && applies(a, s) && rawOf(s, a, true) === ABS);
+    if (who.length) absList.push({ a, who });
+  });
+  const absStudents = new Set(absList.flatMap(x => x.who.map(s => s.key)));
   const fOpts = focusOptions();
   const outCount = data.students.filter(s => inSel(s) && s.status === OUT).length;
 
   let h = `<div class="toolbar">
     <span class="group-title">${esc(selLabel())}</span>
-    <div class="hint">숫자를 넣으면 기준에 따라 점수가 바로 계산돼요. 안 낸 학생은 <b>미제출</b>에 체크하거나 칸에 <b>x</b>를 치세요. Enter·↑↓로 위아래 이동.</div>
+    <div class="hint">숫자를 넣으면 기준에 따라 점수가 바로 계산돼요. 안 낸 학생은 <b>미제출</b>(또는 칸에 <b>x</b>), 빠진 학생은 <b>결시</b>(또는 칸에 <b>결시</b>)로 표시해요. Enter·↑↓로 위아래 이동.</div>
+    <button class="btn ${absPanel ? 'abs-on' : 'ghost'}" id="toggleAbs">결시 ${absStudents.size}명</button>
     ${outCount ? `<button class="btn ghost" id="toggleOut">${showOut ? '전출생 숨기기' : `전출 ${outCount}명 보기`}</button>` : ''}
     <button class="btn ghost" id="revertRec">되돌리기</button>
     <button class="btn primary" id="saveRec">저장</button>
@@ -905,6 +945,14 @@ function renderInput(){
   ${fOpts.length > 1 ? `<div class="focus-bar"><span class="focus-label">입력할 영역</span>
     <button class="focus-pill${!inputFocus ? ' on' : ''}" data-f="">전체 보기</button>
     ${fOpts.map(o => `<button class="focus-pill${o.grp ? ' grp' : ''}${inputFocus === o.v ? ' on' : ''}" data-f="${esc(o.v)}">${o.grp ? '📁 ' : ''}${esc(o.label)}${o.grp ? ` <small>${o.n}</small>` : ''}</button>`).join('')}
+  </div>` : ''}
+  ${absPanel ? `<div class="card abs-panel">
+    <div class="abs-head"><b>결시생 모아보기</b> <span class="muted">· ${esc(selLabel())} · ${inputFocus ? '고른 영역' : '전체 영역'} 기준</span>
+      <span class="spacer"></span>
+      <label class="abs-only"><input type="checkbox" id="absOnly" ${absOnly ? 'checked' : ''}> 표에 결시생만 보기</label></div>
+    ${absList.length ? absList.map(x => `<div class="abs-row"><span class="abs-area">${x.a.group ? `<small>${esc(x.a.group)} ›</small> ` : ''}${esc(x.a.name)}</span><span class="abs-n">${x.who.length}명</span>
+      <span class="abs-names">${x.who.map(s => esc((sel.cls ? '' : (sel.grade ? s.cls : s.grade + '-' + s.cls) + '반 ') + s.no + '번 ' + s.name)).join(' · ')}</span></div>`).join('')
+      : '<div class="muted">결시생이 없어요.</div>'}
   </div>` : ''}
   <div class="table-wrap${inputFocus ? ' focused' : ''}"><table class="grid"><thead><tr><th class="c-no">번호</th><th class="c-name">이름</th>`;
   const blocks = blocksOf(areas);
@@ -931,22 +979,23 @@ function renderInput(){
       const changed = pending.has(k);
       const v = rawOf(s, a, true);
       const sc = scoreFor(a, v);
-      const miss = v === MISS;
+      const miss = v === MISS, abs = v === ABS;
+      const absChk = `<label class="abs-chk" title="결시 (칸에 '결시'라고 써도 돼요)"><input type="checkbox" class="abs" ${abs ? 'checked' : ''} ${isOut ? 'disabled' : ''}>결시</label>`;
       if (areaType(a) === 'items'){
         const bits = itemBits(a, v), cnt = bits.filter(Boolean).length;
-        h += `<td class="cell items-cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}">
-          <div class="chips">${a.items.map((nm, bi) => `<button type="button" class="chip${bits[bi] ? ' on' : ''}" data-b="${bi}" ${miss || isOut ? 'disabled' : ''} title="${esc(nm)}">${esc(nm)}</button>`).join('')}</div>
-          <div class="items-foot"><span class="cnt">${isItemsRaw(v) ? `${cnt}/${a.items.length}개` : ''}</span><label class="miss-chk"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label><span class="sc">${sc === null ? '' : fmt(sc) + '점'}</span>${isOut ? '' : `<button type="button" class="chip-clear" title="이 칸 비우기">지우기</button>`}</div></td>`;
+        h += `<td class="cell items-cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}${abs ? ' absent' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}">
+          <div class="chips">${a.items.map((nm, bi) => `<button type="button" class="chip${bits[bi] ? ' on' : ''}" data-b="${bi}" ${miss || abs || isOut ? 'disabled' : ''} title="${esc(nm)}">${esc(nm)}</button>`).join('')}</div>
+          <div class="items-foot"><span class="cnt">${isItemsRaw(v) ? `${cnt}/${a.items.length}개` : ''}</span><label class="miss-chk"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label>${absChk}<span class="sc">${abs ? '결시' : sc === null ? '' : fmt(sc) + '점'}</span>${isOut ? '' : `<button type="button" class="chip-clear" title="이 칸 비우기">지우기</button>`}</div></td>`;
         return;
       }
-      h += `<td class="cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}"><input class="raw" data-r="${i}" data-c="${j}" data-k="${esc(k)}" value="${miss ? '' : esc(fmt(v))}" placeholder="${miss ? '미제출' : ''}" ${miss || isOut ? 'disabled' : ''} inputmode="decimal" autocomplete="off"><span class="unit">${esc(a.unit)}</span><label class="miss-chk" title="미제출 (x 키로도 표시)"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label><span class="sc">${sc === null ? '' : fmt(sc) + '점'}</span></td>`;
+      h += `<td class="cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}${abs ? ' absent' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}"><input class="raw" data-r="${i}" data-c="${j}" data-k="${esc(k)}" value="${miss || abs ? '' : esc(fmt(v))}" placeholder="${miss ? '미제출' : abs ? '결시' : ''}" ${miss || abs || isOut ? 'disabled' : ''} inputmode="decimal" autocomplete="off"><span class="unit">${esc(a.unit)}</span><label class="miss-chk" title="미제출 (x 키로도 표시)"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label>${absChk}<span class="sc">${abs ? '결시' : sc === null ? '' : fmt(sc) + '점'}</span></td>`;
     });
       if (b.group){ const gs = groupScore(s, b.all, true); h += `<td class="sub-col" data-sg="${esc(b.group)}" data-sr="${i}">${gs === null ? '–' : fmt(gs) + '점'}</td>`; }
     });
     const t = studentTotal(s, true);
-    h += `<td class="total" data-t="${i}">${t === null ? '–' : fmt(t) + '점'}</td></tr>`;
+    h += `<td class="total${hasAbs(s, data.areas) ? ' has-abs' : ''}" data-t="${i}">${t === null ? '–' : fmt(t) + '점'}</td></tr>`;
   });
-  h += `</tbody></table></div>`;
+  h += `</tbody></table>${absOnly && !studs.length ? '<div class="empty">이 영역에는 결시생이 없어요.</div>' : ''}</div>`;
   el.innerHTML = h;
   updateSaveBtn();
 }
@@ -961,39 +1010,45 @@ function updateSaveBtn(){
 function onRawInput(inp, forceVal){
   const k = inp.dataset.k;
   const i = +inp.dataset.r, j = +inp.dataset.c;
-  const a = inputAreas()[j], s = inputStudents()[i];
+  const a = curAreas[j], s = curStuds[i];
   const td = inp.closest('td');
   let val = forceVal !== undefined ? forceVal : inp.value.trim();
   if (/^(x|X|ㅌ|미|미제출)$/.test(val)) val = MISS;   // x 를 치면 미제출
-  const ok = val === '' || val === MISS || isNum(val);
+  if (/^결시$/.test(val)) val = ABS;                   // '결시'라고 쓰면 결시
+  const ok = val === '' || val === MISS || val === ABS || isNum(val);
   inp.classList.toggle('bad', !ok);
   if (!ok) return;
-  const miss = val === MISS;
-  inp.disabled = miss; inp.placeholder = miss ? '미제출' : '';
-  if (miss) inp.value = '';
-  commitCell(td, val === '' || val === MISS ? val : Number(val));
+  commitCell(td, val === '' || val === MISS || val === ABS ? val : Number(val));
   void k; void a; void s;
 }
 
 // 칸 값 바꾸기 (숫자 칸 · 항목 칸 공통): 저장 대기 목록, 점수, 소계, 합계 갱신
 function commitCell(td, val){
   const k = td.dataset.k, i = +td.dataset.r, j = +td.dataset.c;
-  const a = inputAreas()[j], s = inputStudents()[i];
+  const a = curAreas[j], s = curStuds[i];
   const saved = raws.has(k) ? String(raws.get(k)) : '';
   if (String(val) === saved) pending.delete(k); else pending.set(k, val);
-  const miss = val === MISS;
+  const miss = val === MISS, abs = val === ABS;
   td.classList.toggle('missing', miss);
+  td.classList.toggle('absent', abs);
   $('.miss', td).checked = miss;
+  $('.abs', td).checked = abs;
   td.classList.toggle('changed', pending.has(k));
+  const inp = $('.raw', td);
+  if (inp){
+    inp.disabled = miss || abs; inp.placeholder = miss ? '미제출' : abs ? '결시' : '';
+    if (miss || abs) inp.value = '';
+  }
   if (td.classList.contains('items-cell')){
     const bits = itemBits(a, val);
-    $$('.chip', td).forEach((c, bi) => { c.classList.toggle('on', !!bits[bi]); c.disabled = miss; });
+    $$('.chip', td).forEach((c, bi) => { c.classList.toggle('on', !!bits[bi]); c.disabled = miss || abs; });
     $('.cnt', td).textContent = isItemsRaw(val) ? `${bits.filter(Boolean).length}/${bits.length}개` : '';
   }
   const sc = scoreFor(a, val);
-  td.querySelector('.sc').textContent = sc === null ? '' : fmt(sc) + '점';
+  td.querySelector('.sc').textContent = abs ? '결시' : sc === null ? '' : fmt(sc) + '점';
   const t = studentTotal(s, true);
   $(`td[data-t="${i}"]`).textContent = t === null ? '–' : fmt(t) + '점';
+  $(`td[data-t="${i}"]`).classList.toggle('has-abs', hasAbs(s, data.areas));
   if (a.group){
     const cell = $$(`td[data-sr="${i}"]`, inputEl).find(c => c.dataset.sg === a.group);
     if (cell){ const gs = groupScore(s, visibleAreas().filter(x => x.group === a.group), true); cell.textContent = gs === null ? '–' : fmt(gs) + '점'; }
@@ -1003,6 +1058,10 @@ function commitCell(td, val){
 
 async function saveRecords(){
   if (!pending.size) return true;
+  // 예전 Code.gs는 '결시'를 모르고 그 칸을 지워 버리므로 저장을 막음
+  if (serverVersion < 11 && [...pending.values()].includes(ABS)){
+    toast('결시를 저장하려면 새 Code.gs를 먼저 배포해야 해요. (위쪽 주황색 안내 참고)', 'err'); return false;
+  }
   const records = [...pending].map(([k, raw]) => {
     const p = k.lastIndexOf('|');
     return { key: k.slice(0, p), areaId: k.slice(p + 1), raw };
@@ -1022,12 +1081,17 @@ async function saveRecords(){
 }
 
 const inputEl = $('#tab-input');
-inputEl.addEventListener('input', e => { if (e.target.classList.contains('raw')) onRawInput(e.target); });
+// 한글 입력('결시') 중간 글자에는 반응하지 않고, 글자가 완성된 뒤에 처리
+inputEl.addEventListener('input', e => { if (e.target.classList.contains('raw') && !e.isComposing) onRawInput(e.target); });
+inputEl.addEventListener('compositionend', e => { if (e.target.classList.contains('raw')) onRawInput(e.target); });
 inputEl.addEventListener('change', e => {
-  if (!e.target.classList.contains('miss')) return;
+  if (e.target.id === 'absOnly'){ absOnly = e.target.checked; renderInput(); return; }
+  const isMiss = e.target.classList.contains('miss'), isAbs = e.target.classList.contains('abs');
+  if (!isMiss && !isAbs) return;
+  const val = e.target.checked ? (isMiss ? MISS : ABS) : '';
   const td = e.target.closest('td'), inp = $('.raw', td);
-  if (!inp){ commitCell(td, e.target.checked ? MISS : ''); return; }
-  onRawInput(inp, e.target.checked ? MISS : '');
+  if (!inp){ commitCell(td, val); return; }
+  onRawInput(inp, val);
   if (!e.target.checked){ inp.focus(); }
 });
 // 항목 버튼 누르기 → 맞힘/안 맞힘
@@ -1036,7 +1100,7 @@ inputEl.addEventListener('click', e => {
   if (!chip && !clr) return;
   const td = e.target.closest('td'), k = td.dataset.k;
   if (clr){ commitCell(td, ''); return; }
-  const a = inputAreas()[+td.dataset.c];
+  const a = curAreas[+td.dataset.c];
   const cur = pending.has(k) ? pending.get(k) : (raws.get(k) ?? '');
   const bits = itemBits(a, cur);
   bits[+chip.dataset.b] = !bits[+chip.dataset.b];
@@ -1064,6 +1128,7 @@ inputEl.addEventListener('focusin', e => { if (e.target.classList.contains('raw'
 inputEl.addEventListener('click', e => {
   if (e.target.id === 'saveRec') saveRecords();
   if (e.target.id === 'toggleOut'){ showOut = !showOut; renderInput(); }
+  if (e.target.id === 'toggleAbs'){ absPanel = !absPanel; if (!absPanel) absOnly = false; renderInput(); }
   const pill = e.target.closest('.focus-pill');
   if (pill){ inputFocus = pill.dataset.f; store('grader-focus', inputFocus); renderInput(); }
   if (e.target.id === 'revertRec' && confirm('저장하지 않은 입력을 모두 되돌릴까요?')){ pending.clear(); renderInput(); }
@@ -1824,7 +1889,9 @@ function neisValue(s, m){
   if (!app.length) return { v: null, na: true };
   let sum = 0;
   for (const a of app){
-    const sc = scoreFor(a, raws.get(s.key + '|' + a.id) ?? '');
+    const rv = raws.get(s.key + '|' + a.id) ?? '';
+    if (rv === ABS) return { v: null, absent: true };
+    const sc = scoreFor(a, rv);
     if (sc === null) return { v: null, missing: true };
     sum += sc;
   }
@@ -1833,12 +1900,12 @@ function neisValue(s, m){
 
 function neisPlan(f){
   const cols = f.columns.map(c => ({ ...c, map: guessMap(c) }));
-  const out = { fill: [], filled: 0, missing: [], mismatch: [], notFound: [], na: 0, over: [] };
+  const out = { fill: [], filled: 0, missing: [], absent: [], mismatch: [], notFound: [], na: 0, over: [] };
   f.rows.forEach(row => {
     const s = data.students.find(x => x.key === keyOf(neisGrade, row.cls, row.no));
     if (!s){ out.notFound.push(`${row.cls}반 ${row.no}번 ${row.name}`); return; }
     if (squash(s.name) !== squash(row.name)){ out.mismatch.push(`${row.no}번 나이스 '${row.name}' ↔ 채점판 '${s.name}'`); return; }
-    const miss = [];
+    const miss = [], absC = [];
     cols.forEach(c => {
       if (c.map === '-') return;
       const r = neisValue(s, c.map);
@@ -1846,8 +1913,10 @@ function neisPlan(f){
         out.fill.push({ r: row.r, col: c.col, v: r.v }); out.filled++;
         if (c.max !== null && r.v > c.max) out.over.push(`${row.no}번 ${row.name} · ${c.title} ${fmt(r.v)}점 (만점 ${fmt(c.max)})`);
       } else if (r.na) out.na++;
+      else if (r.absent) absC.push(c.title);
       else miss.push(c.title);
     });
+    if (absC.length) out.absent.push(`${row.no}번 ${row.name} (${absC.join(', ')})`);
     if (miss.length) out.missing.push(`${row.no}번 ${row.name} (${miss.join(', ')})`);
   });
   return { cols, ...out };
@@ -1927,6 +1996,7 @@ function renderExport(){
       const cls = [...new Set(f.rows.map(r => r.cls))].join(', ');
       const notes = [];
       if (p.missing.length) notes.push(`<div class="warn-txt">점수 없음 ${p.missing.length}명 → 빈칸으로 둠<br><small>${esc(p.missing.slice(0, 6).join(' · '))}${p.missing.length > 6 ? ' …' : ''}</small></div>`);
+      if (p.absent.length) notes.push(`<div class="warn-txt abs-txt">결시 ${p.absent.length}명 → 빈칸으로 둠<br><small>${esc(p.absent.slice(0, 6).join(' · '))}${p.absent.length > 6 ? ' …' : ''}</small></div>`);
       if (p.mismatch.length) notes.push(`<div class="warn-txt">이름 다름 ${p.mismatch.length}명 → 빈칸으로 둠<br><small>${esc(p.mismatch.slice(0, 4).join(' · '))}</small></div>`);
       if (p.notFound.length) notes.push(`<div class="warn-txt">채점판 명단에 없음 ${p.notFound.length}명<br><small>${esc(p.notFound.slice(0, 4).join(' · '))}</small></div>`);
       if (p.over.length) notes.push(`<div class="warn-txt">만점 초과 ${p.over.length}칸<br><small>${esc(p.over.slice(0, 3).join(' · '))}</small></div>`);
@@ -2040,7 +2110,7 @@ function renderStage(){
       blocks.forEach(b => {
         b.areas.forEach(a => {
           if (!applies(a, s)){ h += `<td class="n-a">·</td>`; return; }
-          const sc = scoreFor(a, rawOf(s, a, false)); h += `<td>${sc === null ? '–' : fmt(sc)}</td>`;
+          const rv = rawOf(s, a, false), sc = scoreFor(a, rv); h += `<td${rv === ABS ? ' class="abs-td"' : ''}>${rv === ABS ? '결시' : sc === null ? '–' : fmt(sc)}</td>`;
         });
         if (b.group){ const gs = groupScore(s, b.areas, false); h += `<td class="sub-col">${gs === null ? '–' : fmt(gs)}</td>`; }
       });
@@ -2060,12 +2130,13 @@ function renderStage(){
       const subs = [];
       if (v === undefined || v === '') subs.push('아직 입력 전');
       else if (v === MISS) subs.push('미제출');
+      else if (v === ABS) subs.push('결시');
       else if (areaType(a) === 'min') subs.push(`${esc(fmt(v))}${esc(a.unit)}`);
       else if (areaType(a) === 'deduct') subs.push(Number(v) ? `${esc(fmt(v))}${esc(a.unit || '개')} 틀림` : '모두 맞음');
       else if (areaType(a) === 'items') subs.push(`${itemBits(a, v).filter(Boolean).length}/${a.items.length}개 항목`);
       if (mx !== null) subs.push(`만점 ${fmt(mx)}점`);
       const pct = (sc !== null && mx) ? Math.max(0, Math.min(100, sc / mx * 100)) : 0;
-      return `<div class="tile${v === MISS ? ' missing' : ''}">
+      return `<div class="tile${v === MISS ? ' missing' : ''}${v === ABS ? ' absent' : ''}">
         <div class="t-name">${esc(a.name)}</div>
         <div class="t-score${sc === null ? ' none' : ''}">${sc === null ? '–' : fmt(sc)}${sc === null ? '' : '<small>점</small>'}</div>
         ${mx !== null ? `<div class="t-bar"><i style="width:${pct}%"></i></div>` : ''}

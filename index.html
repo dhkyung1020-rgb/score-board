@@ -20,10 +20,10 @@ button,input,select,textarea{font:inherit;color:inherit}
 
 /* 상단 */
 header{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--line)}
-.bar{max-width:1240px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.bar{max-width:1240px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .logo{font-weight:800;font-size:18px;letter-spacing:-.02em}
 .tabs{display:flex;gap:4px;background:#ebe9e2;padding:4px;border-radius:999px}
-.tab{border:0;background:transparent;padding:7px 16px;border-radius:999px;cursor:pointer;color:var(--muted);font-weight:600}
+.tab{border:0;background:transparent;padding:7px 13px;border-radius:999px;cursor:pointer;color:var(--muted);font-weight:600}
 .tab.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
 .badge{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--warn-soft);color:var(--warn);font-weight:600}
 #status{font-size:13px;color:var(--muted);min-width:60px;text-align:right}
@@ -186,6 +186,14 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .cls-chip:hover{border-color:var(--accent)}
 .cls-chip.on{background:#eef0f6;border-color:#b9c2dd;color:#3a4778;font-weight:700}
 .cls-sum{font-size:13px;margin-left:6px}
+.exp-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.exp-card{padding:16px 18px;margin-top:14px}
+.exp-h{display:flex;align-items:center;gap:8px;font-weight:800;font-size:16px;margin-bottom:10px}
+.exp-h .muted{font-weight:400;font-size:13px}
+.exp-card select.field{min-width:300px}
+.warn-txt{color:var(--warn);font-size:13px;font-weight:600;margin-bottom:4px}
+.warn-txt small{font-weight:400;color:#9a5a33}
+.ok-txt{color:var(--accent);font-weight:700;font-size:13px}
 .miss-chk{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--muted);margin-right:6px;cursor:pointer;user-select:none}
 .miss-chk input{margin:0;accent-color:var(--warn)}
 .cell.missing .miss-chk{color:var(--warn);font-weight:700}
@@ -308,6 +316,7 @@ dialog::backdrop{background:rgba(30,30,30,.35)}
       <button class="tab" data-tab="criteria">채점 기준</button>
       <button class="tab" data-tab="students">학생 명단</button>
       <button class="tab" data-tab="show">화면 보기</button>
+      <button class="tab" data-tab="export">내보내기</button>
     </nav>
     <div class="group-sel" title="학기 · 학년 · 반">
       <select id="termSel" class="term"></select>
@@ -331,6 +340,7 @@ dialog::backdrop{background:rgba(30,30,30,.35)}
   <section class="panel" id="tab-criteria" hidden></section>
   <section class="panel" id="tab-students" hidden></section>
   <section class="panel" id="tab-show" hidden></section>
+  <section class="panel" id="tab-export" hidden></section>
 </main>
 
 <dialog id="termDlg">
@@ -863,7 +873,7 @@ async function switchTab(t){
 }
 
 function renderCurrent(){
-  ({ input: renderInput, criteria: renderCriteria, students: renderStudents, show: renderShow })[currentTab]();
+  ({ input: renderInput, criteria: renderCriteria, students: renderStudents, show: renderShow, export: renderExport })[currentTab]();
 }
 
 function emptyBox(msg){ return `<div class="card empty">${msg}</div>`; }
@@ -1379,7 +1389,13 @@ async function readRosterFile(file){
   await loadXlsx();
   const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
   let rows = [];
-  wb.SheetNames.forEach(n => { rows = rows.concat(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' })); });
+  wb.SheetNames.forEach(n => {
+    const ws = wb.Sheets[n];
+    // 나이스 등에서 만든 파일은 시트 범위 정보가 'A1'로 잘못 적혀 있기도 해서 실제 칸으로 다시 계산
+    const refs = Object.keys(ws).filter(k => k[0] !== '!');
+    if (refs.length) ws['!ref'] = XLSX.utils.encode_range(refs.map(k => XLSX.utils.decode_cell(k)).reduce((r, c) => ({ s: { r: Math.min(r.s.r, c.r), c: Math.min(r.s.c, c.c) }, e: { r: Math.max(r.e.r, c.r), c: Math.max(r.e.c, c.c) } }), { s: { r: 1e9, c: 1e9 }, e: { r: 0, c: 0 } }));
+    rows = rows.concat(XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' }));
+  });
   return rows;
 }
 
@@ -1709,6 +1725,259 @@ stuEl.addEventListener('keydown', e => {
   if (e.key !== 'Enter') return;
   if (e.target.id === 'newG' || e.target.id === 'newC') $('#addGroup').click();
   if (e.target.id === 'inName' || e.target.id === 'inNo') $('#addIn').click();
+});
+
+/* ================= 나이스 내보내기 =================
+   나이스에서 받은 수행평가 업로드 양식(엑셀)을 올리면, 원본 파일은 그대로 두고
+   빈 점수 칸에만 숫자를 채워서 같은 이름의 파일로 내려받게 함. */
+let neisFiles = [];                       // 불러온 양식들
+let neisMap = recall('grader-neis-map') || {};   // 나이스 영역 이름 → 'g:묶음' | 'a:영역ID' | '-'
+let neisGrade = '';
+let jszipLoading = null;
+function loadJsZip(){
+  if (window.JSZip) return Promise.resolve();
+  if (!jszipLoading) jszipLoading = new Promise((res, rej) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    sc.onload = res; sc.onerror = () => { jszipLoading = null; rej(new Error('엑셀 처리 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.')); };
+    document.head.appendChild(sc);
+  });
+  return jszipLoading;
+}
+const colToNum = c => c.split('').reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+const splitRef = ref => { const m = /^([A-Z]+)(\d+)$/.exec(ref); return m ? [m[1], +m[2]] : [null, 0]; };
+const squash = v => String(v ?? '').replace(/\s+/g, '');
+
+async function readNeisFile(file){
+  await loadJsZip();
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const P = new DOMParser();
+  const xml = async path => { const f = zip.file(path); return f ? P.parseFromString(await f.async('string'), 'application/xml') : null; };
+  // 첫 번째 시트 찾기
+  const wb = await xml('xl/workbook.xml'), rels = await xml('xl/_rels/workbook.xml.rels');
+  if (!wb) throw new Error(`${file.name}: 엑셀(.xlsx) 파일이 아니에요.`);
+  const first = wb.getElementsByTagName('sheet')[0];
+  const rid = first.getAttribute('r:id') || first.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+  let target = [...rels.getElementsByTagName('Relationship')].find(r => r.getAttribute('Id') === rid).getAttribute('Target');
+  const sheetPath = target.startsWith('/') ? target.slice(1) : 'xl/' + target.replace(/^\.\//, '');
+  const sstDoc = await xml('xl/sharedStrings.xml');
+  const sst = sstDoc ? [...sstDoc.getElementsByTagName('si')].map(si => [...si.getElementsByTagName('t')].map(t => t.textContent).join('')) : [];
+  const doc = await xml(sheetPath);
+  // 칸 값 읽기
+  const grid = {};
+  [...doc.getElementsByTagName('c')].forEach(c => {
+    const [col, row] = splitRef(c.getAttribute('r')); if (!col) return;
+    const t = c.getAttribute('t'); let v = '';
+    if (t === 'inlineStr') v = [...c.getElementsByTagName('t')].map(x => x.textContent).join('');
+    else { const ve = c.getElementsByTagName('v')[0]; v = ve ? ve.textContent : ''; if (t === 's') v = sst[+v] ?? ''; }
+    (grid[row] = grid[row] || {})[col] = v;
+  });
+  // 제목 줄 찾기: 반 · 번호 · 성명(이름)
+  let hRow = 0, cCls, cNo, cName;
+  for (const r of Object.keys(grid).map(Number).sort((a, b) => a - b).slice(0, 15)){
+    const find = re => Object.keys(grid[r]).find(k => re.test(squash(grid[r][k])));
+    cCls = find(/^반$/); cNo = find(/^번호$/); cName = find(/^(성명|이름|학생명)$/);
+    if (cCls && cNo && cName){ hRow = r; break; }
+  }
+  if (!hRow) throw new Error(`${file.name}: '반 / 번호 / 성명' 칸을 찾지 못했어요. 나이스 수행평가 업로드 양식이 맞는지 확인해 주세요.`);
+  const skip = /^(과목|학년|반|번호|성명|이름|학생명|비고)$/;
+  const columns = Object.keys(grid[hRow]).filter(k => squash(grid[hRow][k]) && !skip.test(squash(grid[hRow][k])))
+    .sort((a, b) => colToNum(a) - colToNum(b)).map(col => {
+      let max = null;
+      for (let r = hRow + 1; r <= hRow + 3; r++){ const m = /만점\D*([\d.]+)/.exec(grid[r]?.[col] || ''); if (m){ max = Number(m[1]); break; } }
+      return { col, title: String(grid[hRow][col]).trim(), max };
+    });
+  const rows = Object.keys(grid).map(Number).filter(r => r > hRow && isNum(norm(grid[r][cCls])) && isNum(norm(grid[r][cNo])))
+    .sort((a, b) => a - b).map(r => ({ r, cls: norm(grid[r][cCls]), no: norm(grid[r][cNo]), name: String(grid[r][cName] ?? '').trim() }));
+  return { name: file.name, zip, sheetPath, doc, columns, rows };
+}
+
+// 나이스 영역 이름과 가장 비슷한 묶음/영역 고르기 (만점이 같으면 가산점)
+function neisOptions(){
+  const opts = [];
+  existingGroups().forEach(g => { const mem = data.areas.filter(a => a.group === g); opts.push({ v: 'g:' + g, label: '📁 ' + g + ' (묶음 소계)', name: g, max: groupMax(mem, neisGrade ? { grade: neisGrade } : null) }); });
+  data.areas.forEach(a => opts.push({ v: 'a:' + a.id, label: (a.group ? a.group + ' › ' : '') + a.name, name: a.name, max: maxFor(a) }));
+  return opts;
+}
+function similarity(x, y){
+  const bg = s => { s = squash(s).replace(/[()（）]/g, ''); const o = []; for (let i = 0; i < s.length - 1; i++) o.push(s.slice(i, i + 2)); return o; };
+  const A = bg(x), B = bg(y); if (!A.length || !B.length) return 0;
+  const pool = B.slice(); let hit = 0;
+  A.forEach(g => { const i = pool.indexOf(g); if (i >= 0){ hit++; pool.splice(i, 1); } });
+  return 2 * hit / (A.length + B.length);
+}
+function guessMap(col){
+  if (neisMap[col.title]) return neisMap[col.title];
+  let best = null, bestScore = 0.3;
+  neisOptions().forEach(o => {
+    const sc = similarity(col.title, o.name) + (col.max !== null && o.max === col.max ? 0.3 : 0) + (o.v.startsWith('g:') ? 0.05 : 0);
+    if (sc > bestScore){ bestScore = sc; best = o.v; }
+  });
+  return best || '-';
+}
+
+// 한 학생 · 한 칸의 값: 아직 입력 안 된 영역이 있으면 null
+function neisValue(s, m){
+  if (!m || m === '-') return { v: null };
+  const members = m.startsWith('g:') ? data.areas.filter(a => a.group === m.slice(2)) : data.areas.filter(a => a.id === m.slice(2));
+  const app = members.filter(a => applies(a, s));
+  if (!app.length) return { v: null, na: true };
+  let sum = 0;
+  for (const a of app){
+    const sc = scoreFor(a, raws.get(s.key + '|' + a.id) ?? '');
+    if (sc === null) return { v: null, missing: true };
+    sum += sc;
+  }
+  return { v: Math.round(sum * 100) / 100 };
+}
+
+function neisPlan(f){
+  const cols = f.columns.map(c => ({ ...c, map: guessMap(c) }));
+  const out = { fill: [], filled: 0, missing: [], mismatch: [], notFound: [], na: 0, over: [] };
+  f.rows.forEach(row => {
+    const s = data.students.find(x => x.key === keyOf(neisGrade, row.cls, row.no));
+    if (!s){ out.notFound.push(`${row.cls}반 ${row.no}번 ${row.name}`); return; }
+    if (squash(s.name) !== squash(row.name)){ out.mismatch.push(`${row.no}번 나이스 '${row.name}' ↔ 채점판 '${s.name}'`); return; }
+    const miss = [];
+    cols.forEach(c => {
+      if (c.map === '-') return;
+      const r = neisValue(s, c.map);
+      if (r.v !== null){
+        out.fill.push({ r: row.r, col: c.col, v: r.v }); out.filled++;
+        if (c.max !== null && r.v > c.max) out.over.push(`${row.no}번 ${row.name} · ${c.title} ${fmt(r.v)}점 (만점 ${fmt(c.max)})`);
+      } else if (r.na) out.na++;
+      else miss.push(c.title);
+    });
+    if (miss.length) out.missing.push(`${row.no}번 ${row.name} (${miss.join(', ')})`);
+  });
+  return { cols, ...out };
+}
+
+async function buildNeisBlob(f, plan){
+  const doc = f.doc, ns = doc.documentElement.namespaceURI;
+  const rows = {};
+  [...doc.getElementsByTagName('row')].forEach(r => rows[r.getAttribute('r')] = r);
+  plan.fill.forEach(({ r, col, v }) => {
+    const ref = col + r;
+    let row = rows[r];
+    if (!row){ row = doc.createElementNS(ns, 'row'); row.setAttribute('r', r); doc.getElementsByTagName('sheetData')[0].appendChild(row); rows[r] = row; }
+    let c = [...row.getElementsByTagName('c')].find(x => x.getAttribute('r') === ref);
+    if (!c){
+      c = doc.createElementNS(ns, 'c'); c.setAttribute('r', ref);
+      const after = [...row.getElementsByTagName('c')].find(x => colToNum(splitRef(x.getAttribute('r'))[0]) > colToNum(col));
+      row.insertBefore(c, after || null);
+    }
+    c.removeAttribute('t');
+    while (c.firstChild) c.removeChild(c.firstChild);
+    const ve = doc.createElementNS(ns, 'v'); ve.textContent = String(v); c.appendChild(ve);
+  });
+  let xmlStr = new XMLSerializer().serializeToString(doc);
+  if (!xmlStr.startsWith('<?xml')) xmlStr = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlStr;
+  f.zip.file(f.sheetPath, xmlStr);
+  return f.zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+function saveBlob(blob, name){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+function renderExport(){
+  const el = $('#tab-export');
+  if (!cfg.url && !cfg.demo){ el.innerHTML = needSetupMsg(); return; }
+  const grades = [...new Set(data.students.map(s => s.grade))].sort(cmpPart);
+  if (!grades.includes(neisGrade)) neisGrade = sel.grade && grades.includes(sel.grade) ? sel.grade : (grades[0] || '');
+  let h = `<div class="toolbar">
+      <span class="group-title">나이스 업로드 파일 만들기</span>
+      <div class="hint">나이스에서 내려받은 <b>수행평가 업로드 양식</b>(반별 엑셀)을 올리면, 원본 형식은 그대로 두고 점수 칸만 채운 파일을 돌려줘요. 여러 반 파일을 한꺼번에 올려도 돼요.</div>
+    </div>
+    ${pending.size ? `<div class="ver-warn" style="margin:0 0 12px">⚠ 점수 입력 탭에 저장하지 않은 칸이 ${pending.size}개 있어요. 저장된 점수만 내보내지니 먼저 저장해 주세요.</div>` : ''}
+    <div class="exp-top">
+      <label class="mini">학년 <select class="field" id="neisGrade">${grades.map(g => `<option value="${esc(g)}" ${g === neisGrade ? 'selected' : ''}>${esc(g)}학년</option>`).join('')}</select></label>
+      <span class="muted" style="font-size:13px">나이스 양식에는 학년이 없어서 여기서 골라요 · ${esc(termLabel(currentTerm))} 점수를 사용해요</span>
+    </div>
+    <label class="drop" id="neisDrop">
+      <input type="file" id="neisFile" accept=".xlsx" multiple hidden>
+      <b>나이스 양식 엑셀을 여기로 끌어오거나 눌러서 고르기</b>
+      <span class="muted">과목 · 반 · 번호 · 성명 + 평가영역(만점) 칸이 있는 업로드용 양식 (.xlsx)</span>
+    </label>`;
+  if (neisFiles.length){
+    // 영역 연결
+    const titles = [];
+    neisFiles.forEach(f => f.columns.forEach(c => { if (!titles.some(t => t.title === c.title)) titles.push(c); }));
+    const opts = neisOptions();
+    h += `<div class="card exp-card"><div class="exp-h">① 나이스 평가영역 ↔ 채점판 연결 <span class="muted">(한 번 정하면 기억해요)</span></div>
+      <table class="imp-table"><thead><tr><th>나이스 평가영역</th><th>나이스 만점</th><th>채점판에서 가져올 점수</th><th></th></tr></thead><tbody>`;
+    titles.forEach(c => {
+      const m = guessMap(c), o = opts.find(x => x.v === m);
+      const warn = o && c.max !== null && o.max !== null && o.max !== c.max ? `<span class="warn-txt">만점이 달라요 (채점판 ${fmt(o.max)}점)</span>` : '';
+      h += `<tr><td><b>${esc(c.title)}</b></td><td>${c.max !== null ? fmt(c.max) + '점' : '–'}</td>
+        <td><select class="field neis-map" data-t="${esc(c.title)}">
+          <option value="-" ${m === '-' ? 'selected' : ''}>(비워 두기)</option>
+          ${opts.map(x => `<option value="${esc(x.v)}" ${x.v === m ? 'selected' : ''}>${esc(x.label)}${x.max !== null ? ` · 만점 ${fmt(x.max)}` : ''}</option>`).join('')}
+        </select></td><td>${warn}</td></tr>`;
+    });
+    h += `</tbody></table></div>
+      <div class="card exp-card"><div class="exp-h">② 반별 확인 후 내려받기
+        <span class="spacer"></span><button class="btn primary" id="neisAll">모두 내려받기 (${neisFiles.length}개)</button></div>
+      <table class="imp-table"><thead><tr><th>파일</th><th>학생</th><th>채운 칸</th><th>확인할 것</th><th></th></tr></thead><tbody>`;
+    neisFiles.forEach((f, i) => {
+      const p = neisPlan(f);
+      const cls = [...new Set(f.rows.map(r => r.cls))].join(', ');
+      const notes = [];
+      if (p.missing.length) notes.push(`<div class="warn-txt">점수 없음 ${p.missing.length}명 → 빈칸으로 둠<br><small>${esc(p.missing.slice(0, 6).join(' · '))}${p.missing.length > 6 ? ' …' : ''}</small></div>`);
+      if (p.mismatch.length) notes.push(`<div class="warn-txt">이름 다름 ${p.mismatch.length}명 → 빈칸으로 둠<br><small>${esc(p.mismatch.slice(0, 4).join(' · '))}</small></div>`);
+      if (p.notFound.length) notes.push(`<div class="warn-txt">채점판 명단에 없음 ${p.notFound.length}명<br><small>${esc(p.notFound.slice(0, 4).join(' · '))}</small></div>`);
+      if (p.over.length) notes.push(`<div class="warn-txt">만점 초과 ${p.over.length}칸<br><small>${esc(p.over.slice(0, 3).join(' · '))}</small></div>`);
+      h += `<tr><td><b>${esc(neisGrade)}학년 ${esc(cls)}반</b><br><small class="muted">${esc(f.name)}</small></td><td>${f.rows.length}명</td>
+        <td>${p.filled}칸</td><td>${notes.join('') || '<span class="ok-txt">✓ 모두 채움</span>'}</td>
+        <td><button class="btn sm" data-dl="${i}">내려받기</button> <button class="icon-btn" data-rm="${i}" title="목록에서 빼기">✕</button></td></tr>`;
+    });
+    h += `</tbody></table>
+      <p class="hint" style="margin:10px 0 0">내려받은 파일은 나이스 양식과 이름·형식이 같아요. 나이스 수행평가 화면에서 그대로 업로드하면 돼요. 점수가 없는 칸은 비워 두니, 업로드 전에 한 번 열어서 확인해 주세요.</p></div>`;
+  }
+  el.innerHTML = h;
+}
+
+const expEl = $('#tab-export');
+async function addNeisFiles(files){
+  setStatus('양식 읽는 중…');
+  for (const file of files){
+    try {
+      const f = await readNeisFile(file);
+      neisFiles = neisFiles.filter(x => x.name !== f.name).concat(f);
+    } catch(err){ toast(err.message || `${file.name}을 읽지 못했어요.`, 'err'); }
+  }
+  neisFiles.sort((a, b) => cmpPart(a.rows[0]?.cls || '', b.rows[0]?.cls || ''));
+  setStatus(''); renderExport();
+}
+async function downloadNeis(i){
+  const f = neisFiles[i];
+  const blob = await buildNeisBlob(f, neisPlan(f));
+  saveBlob(blob, f.name);
+  // 같은 양식을 다시 내려받을 수 있도록 원본에서 다시 읽어 둘 필요는 없음 (같은 칸에 덮어씀)
+}
+expEl.addEventListener('change', e => {
+  if (e.target.id === 'neisFile' && e.target.files.length) addNeisFiles([...e.target.files]);
+  if (e.target.id === 'neisGrade'){ neisGrade = e.target.value; renderExport(); }
+  if (e.target.classList.contains('neis-map')){ neisMap[e.target.dataset.t] = e.target.value; store('grader-neis-map', neisMap); renderExport(); }
+});
+expEl.addEventListener('dragover', e => { const d = e.target.closest('#neisDrop'); if (d){ e.preventDefault(); d.classList.add('over'); } });
+expEl.addEventListener('dragleave', e => { const d = e.target.closest('#neisDrop'); if (d) d.classList.remove('over'); });
+expEl.addEventListener('drop', e => {
+  const d = e.target.closest('#neisDrop'); if (!d) return;
+  e.preventDefault(); d.classList.remove('over');
+  if (e.dataTransfer.files.length) addNeisFiles([...e.dataTransfer.files]);
+});
+expEl.addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.dl !== undefined){ await downloadNeis(+b.dataset.dl); toast('내려받았어요'); }
+  if (b.dataset.rm !== undefined){ neisFiles.splice(+b.dataset.rm, 1); renderExport(); }
+  if (b.id === 'neisAll'){
+    for (let i = 0; i < neisFiles.length; i++){ await downloadNeis(i); await new Promise(r => setTimeout(r, 400)); }
+    toast(`${neisFiles.length}개 파일을 내려받았어요`);
+  }
 });
 
 /* ================= 화면 보기 ================= */

@@ -139,7 +139,7 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .area-card.grouped{border-left:4px solid #e6c98a}
 .grp-end{height:4px}
 .area-head .area-grp{width:170px}
-.grp-card{grid-column:1/-1;background:#fdf7ea;border:1px solid #f0e2c0;border-radius:18px;padding:16px 18px 18px}
+.grp-card{flex:var(--n) 1 calc(var(--n) * 190px);min-width:0;background:#fdf7ea;border:1px solid #f0e2c0;border-radius:18px;padding:16px 18px 18px}
 #stage:fullscreen .grp-card{background:#fdf7ea}
 .grp-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .grp-name{font-size:clamp(18px,1.9vw,28px);font-weight:800;color:#7a5a1c}
@@ -148,7 +148,7 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .grp-score.none{color:#c5c2b9}
 .grp-bar{margin:10px 0 14px}
 .grp-bar i{background:#c89a3c}
-.grp-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.grp-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .grp-tiles .tile{background:var(--panel);padding:14px 16px}
 .grp-tiles .t-score{font-size:clamp(32px,3.6vw,56px)}
 .cell.items-cell{min-width:300px;max-width:420px;padding-top:8px;padding-bottom:8px}
@@ -180,6 +180,12 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .focus-pill.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .table-wrap.focused{max-height:calc(100vh - 215px)}
 .crit-bottom{display:flex;align-items:center;gap:10px;margin-top:14px;padding:14px 0 30px;border-top:1px dashed var(--line)}
+.cls-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin:-4px 0 12px}
+.cls-row .mini{margin-right:4px}
+.cls-chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 10px;font-size:13px;cursor:pointer;color:var(--muted)}
+.cls-chip:hover{border-color:var(--accent)}
+.cls-chip.on{background:#eef0f6;border-color:#b9c2dd;color:#3a4778;font-weight:700}
+.cls-sum{font-size:13px;margin-left:6px}
 .miss-chk{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--muted);margin-right:6px;cursor:pointer;user-select:none}
 .miss-chk input{margin:0;accent-color:var(--warn)}
 .cell.missing .miss-chk{color:var(--warn);font-weight:700}
@@ -203,17 +209,25 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .seg{display:flex;background:#ebe9e2;padding:3px;border-radius:9px}
 .seg button{border:0;background:transparent;padding:6px 14px;border-radius:7px;cursor:pointer;font-weight:600;color:var(--muted)}
 .seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
-#stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:18px;min-height:calc(100vh - 190px);padding:40px 48px 32px;display:flex;flex-direction:column}
-#stage:fullscreen{border:0;border-radius:0;background:var(--bg);padding:5vh 6vw;min-height:100vh;overflow:auto}
+#stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:18px;height:calc(100vh - 160px);min-height:360px;padding:34px 40px 26px;display:flex;flex-direction:column;overflow:hidden}
+#stage:fullscreen{border:0;border-radius:0;background:var(--bg);padding:4vh 4vw;height:100vh}
 .stage-nav{position:absolute;top:14px;right:16px;display:flex;align-items:center;gap:4px;opacity:.55;transition:opacity .2s}
 #stage:hover .stage-nav{opacity:1}
 .stage-nav .pos{font-size:13px;color:var(--muted);margin:0 6px;min-width:52px;text-align:center}
-.stage-body{flex:1;display:flex;flex-direction:column;animation:rise .35s ease}
+.stage-body{display:flex;flex-direction:column;animation:rise .35s ease;transform-origin:top left}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .who{display:flex;align-items:baseline;gap:18px;margin-bottom:20px}
 .who-no{font-size:clamp(20px,2.4vw,34px);color:var(--muted);font-weight:600}
 .who-name{font-size:clamp(36px,5vw,76px);font-weight:800;letter-spacing:-.03em}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px;flex:1;align-content:start}
+.who{flex-wrap:wrap}
+.who-total{display:flex;align-items:baseline;gap:10px;background:var(--accent);color:#fff;padding:10px 22px;border-radius:16px;align-self:center}
+.who-total span{font-size:clamp(16px,1.6vw,24px);font-weight:700;opacity:.85}
+.who-total b{font-size:clamp(40px,4.6vw,72px);font-weight:800;letter-spacing:-.03em;line-height:1}
+.who-total small{font-size:clamp(16px,1.6vw,24px);font-weight:700;opacity:.85}
+.tiles{display:flex;flex-wrap:wrap;gap:16px;align-content:flex-start}
+.tiles > .tile{flex:1 1 210px}
+.stage-body.stack .grp-card{flex-basis:100%}
+#stage.scroll{overflow:auto}
 .tile.missing .t-sub{color:var(--warn);font-weight:700}
 .tile{background:#faf9f6;border:1px solid var(--line);border-radius:16px;padding:22px 24px}
 #stage:fullscreen .tile{background:var(--panel)}
@@ -227,8 +241,8 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .sum{margin-top:26px;display:flex;align-items:baseline;justify-content:flex-end;gap:14px;padding:20px 28px;background:var(--accent);color:var(--accent-ink);border-radius:16px}
 .sum span{font-size:clamp(18px,2vw,30px);font-weight:600;opacity:.85}
 .sum b{font-size:clamp(48px,6vw,100px);font-weight:800;letter-spacing:-.03em;line-height:1}
-.show-table{width:100%;border-collapse:collapse;font-size:clamp(16px,1.5vw,24px)}
-.show-table th,.show-table td{padding:10px 14px;border-bottom:1px solid var(--line);text-align:center}
+.show-table{width:100%;border-collapse:collapse;font-size:clamp(15px,1.4vw,22px)}
+.show-table th,.show-table td{padding:6px 12px;border-bottom:1px solid var(--line);text-align:center}
 .show-table th{color:var(--muted);font-weight:700;position:sticky;top:0;background:inherit}
 .show-table td.l,.show-table th.l{text-align:left}
 .show-table td.tot{font-weight:800;color:var(--accent)}
@@ -420,6 +434,8 @@ function classesOf(grade){ return allGroups().filter(g => g.grade === grade).map
 
 function fixSel(){
   const groups = allGroups();
+  // 명단을 아직 불러오기 전이면 저장된 선택을 건드리지 않음
+  if (!groups.length && !data.students.length && sel && !sel.auto) return;
   // 아직 고른 반이 없으면 첫 번째 반으로 (명단이 비어 있으면 명단이 생길 때까지 기다림)
   if (!sel || sel.auto){ sel = groups.length ? { grade: groups[0].grade, cls: groups[0].cls } : { grade: '', cls: '', auto: true }; }
   if (sel.grade && !groups.some(g => g.grade === sel.grade)) sel = { grade: '', cls: '' };
@@ -459,8 +475,22 @@ function inSel(s){ return (!sel.grade || s.grade === sel.grade) && (!sel.cls || 
 function visibleStudents(){ return data.students.filter(s => inSel(s) && s.status !== OUT); }
 // 점수 입력 표에 나오는 학생 (전출생은 '보기'를 켰을 때만)
 function inputStudents(){ return data.students.filter(s => inSel(s) && (showOut || s.status !== OUT)); }
-function applies(a, s){ return !a.grade || a.grade === s.grade; }
-function visibleAreas(){ return sel.grade ? data.areas.filter(a => !a.grade || a.grade === sel.grade) : data.areas; }
+// 영역이 이 학생(또는 {grade, cls})에게 적용되나: 적용 학년 + 적용 반 (반 목록이 비어 있으면 모든 반)
+function applies(a, s){
+  if (a.grade && a.grade !== s.grade) return false;
+  if (a.grade && a.classes && a.classes.length && s.cls && !a.classes.includes(s.cls)) return false;
+  return true;
+}
+// [11,12,13,14] → '11~14반', [1,3,4] → '1, 3~4반'
+function classText(list){
+  const n = list.map(Number).filter(isFinite).sort((x, y) => x - y), out = [];
+  for (let i = 0; i < n.length; i++){
+    let j = i; while (j + 1 < n.length && n[j + 1] === n[j] + 1) j++;
+    out.push(j > i ? `${n[i]}~${n[j]}` : `${n[i]}`); i = j;
+  }
+  return out.join(', ') + '반';
+}
+function visibleAreas(){ return sel.grade ? data.areas.filter(a => applies(a, { grade: sel.grade, cls: sel.cls })) : data.areas; }
 // 점수 입력에서 고른 영역: '' = 전체, 'g:묶음이름', 'a:영역ID'
 let inputFocus = recall('grader-focus') || '';
 function focusOptions(){
@@ -589,8 +619,9 @@ function groupScore(s, members, withPending){
   });
   return any ? sum : null;
 }
-function groupMax(members, grade){
-  const list = members.filter(a => !grade || !a.grade || a.grade === grade);
+// scope: { grade, cls } (비어 있으면 전체)
+function groupMax(members, scope){
+  const list = scope && scope.grade ? members.filter(a => applies(a, scope)) : members;
   if (!list.length) return null;
   let t = 0;
   for (const a of list){ const m = maxFor(a); if (m === null) return null; t += m; }
@@ -598,8 +629,8 @@ function groupMax(members, grade){
 }
 function existingGroups(list){ return [...new Set((list || data.areas).map(a => (a.group || '').trim()).filter(Boolean))]; }
 
-function maxTotalFor(grade){
-  const areas = data.areas.filter(a => !a.grade || a.grade === grade);
+function maxTotalFor(scope){
+  const areas = data.areas.filter(a => applies(a, scope));
   if (!areas.length) return null;
   let t = 0;
   for (const a of areas){ const m = maxFor(a); if (m === null) return null; t += m; }
@@ -610,7 +641,8 @@ function stBadge(s){
   if (s.status === IN) return `<span class="st in">전입${s.date ? ' ' + esc(shortDate(s.date)) : ''}</span>`;
   return '';
 }
-function gradeBadge(a){ return a.grade ? `<span class="area-grade">${esc(a.grade)}학년</span>` : ''; }
+function scopeText(a){ return a.grade ? `${a.grade}학년` + (a.classes && a.classes.length ? ' ' + classText(a.classes) : '') : ''; }
+function gradeBadge(a){ return a.grade ? `<span class="area-grade">${esc(scopeText(a))}</span>` : ''; }
 
 /* ================= 서버 통신 ================= */
 async function api(action, payload = {}){
@@ -632,7 +664,7 @@ async function api(action, payload = {}){
 }
 
 // 이 웹페이지가 기대하는 시트 코드(Code.gs) 버전
-const SERVER_VERSION = 9;
+const SERVER_VERSION = 10;
 function checkServerVersion(d){
   const old = !cfg.demo && (Number(d.version) || 0) < SERVER_VERSION;
   $('#verWarn').hidden = !old;
@@ -651,6 +683,7 @@ function applyData(d){
       o.lowest = isNum(a.lowest) ? Number(a.lowest) : o.type === 'deduct' ? numOr(a.floor, 0) : o.type === 'min' ? numOr(a.fallback, 0) : '';
       o.group = String(a.group ?? '').trim();
       o.items = Array.isArray(a.items) ? a.items.map(x => String(x)) : [];
+      o.classes = o.grade && Array.isArray(a.classes) ? a.classes.map(norm).filter(Boolean) : [];
       return o;
     }),
     students: (d.students || []).map(s => {
@@ -867,15 +900,15 @@ function renderInput(){
   const blocks = blocksOf(areas);
   blocks.forEach(b => {
     b.areas.forEach(a => {
-      h += `<th class="cell${b.group ? ' in-grp' : ''}">${b.group ? `<div class="th-grp">${esc(b.group)}</div>` : ''}<div>${esc(a.name)}${sel.grade ? '' : gradeBadge(a)}</div><div class="th-rule" title="${esc(ruleText(a))}">${esc(ruleText(a))}</div></th>`;
+      h += `<th class="cell${b.group ? ' in-grp' : ''}">${b.group ? `<div class="th-grp">${esc(b.group)}</div>` : ''}<div>${esc(a.name)}${sel.grade && (sel.cls || !(a.classes && a.classes.length)) ? '' : gradeBadge(a)}</div><div class="th-rule" title="${esc(ruleText(a))}">${esc(ruleText(a))}</div></th>`;
     });
     if (b.group){
       b.all = visibleAreas().filter(x => x.group === b.group);
-      const gm = groupMax(b.all, sel.grade);
+      const gm = groupMax(b.all, { grade: sel.grade, cls: sel.cls });
       h += `<th class="sub-col"><div class="th-grp">${esc(b.group)}</div><div>소계</div>${gm !== null ? `<div class="th-rule">만점 ${fmt(gm)}점</div>` : ''}</th>`;
     }
   });
-  const mt = sel.grade ? maxTotalFor(sel.grade) : null;
+  const mt = sel.grade && sel.cls ? maxTotalFor({ grade: sel.grade, cls: sel.cls }) : null;
   h += `<th>합계${mt !== null ? `<div class="th-rule">만점 ${fmt(mt)}점</div>` : ''}</th></tr></thead><tbody>`;
   studs.forEach((s, i) => {
     const label = !sel.grade ? `${s.grade}-${s.cls}-${s.no}` : multiClass ? `${s.cls}-${s.no}` : s.no;
@@ -1034,7 +1067,7 @@ function renderCriteria(){
   const grades = allGrades();
 
   let h = `<div class="toolbar">
-    <div class="hint">영역마다 채점 방식을 골라요. <b>○개 이상</b>: 도장처럼 많을수록 높은 점수 · <b>개당 감점</b>: 시험처럼 틀린 개수만큼 감점 · <b>항목별 채점</b>: 맞힌 항목을 눌러서 개수로 채점 · <b>그대로</b>: 넣은 숫자가 곧 점수. <b>적용 학년</b>으로 2학년·3학년 영역을 나눌 수 있어요. <b>묶음</b>에 같은 이름(예: 주거 단원 수행평가)을 적으면 소계가 함께 나와요.</div>
+    <div class="hint">영역마다 채점 방식을 골라요. <b>○개 이상</b>: 도장처럼 많을수록 높은 점수 · <b>개당 감점</b>: 시험처럼 틀린 개수만큼 감점 · <b>항목별 채점</b>: 맞힌 항목을 눌러서 개수로 채점 · <b>그대로</b>: 넣은 숫자가 곧 점수. <b>적용</b>으로 학년이나 반(예: 11~14반만)을 정할 수 있어요. <b>묶음</b>에 같은 이름(예: 주거 단원 수행평가)을 적으면 소계가 함께 나와요.</div>
     <button class="btn" data-act="add-area">+ 영역 추가</button>
     <button class="btn ghost" data-act="revert" ${draftDirty ? '' : 'disabled'}>변경 취소</button>
     <button class="btn primary" data-act="save" ${draftDirty ? '' : 'disabled'}>기준 저장${draftDirty ? '<span class="dirty-dot"></span>' : ''}</button>
@@ -1055,7 +1088,7 @@ function renderCriteria(){
     const g = (a.group || '').trim();
     if (g && g !== lastGroup){
       const members = draftAreas.filter(x => (x.group || '').trim() === g);
-      const gm = groupMax(members, '');
+      const gm = groupMax(members, null);
       h += `<div class="grp-label">📁 <b>${esc(g)}</b> <span class="muted">· ${members.length}개 영역${gm !== null ? ` · 묶음 만점 ${fmt(gm)}점` : ''}</span></div>`;
     } else if (!g && lastGroup) h += `<div class="grp-end"></div>`;
     lastGroup = g || null;
@@ -1073,6 +1106,14 @@ function renderCriteria(){
         <button class="icon-btn" data-act="down" title="아래로" ${i === draftAreas.length - 1 ? 'disabled' : ''}>↓</button>
         <button class="btn sm danger" data-act="del-area">영역 삭제</button>
       </div>
+      ${a.grade ? (() => {
+        const cls = classesOf(a.grade), on = a.classes || [];
+        if (!cls.length) return '';
+        return `<div class="cls-row"><span class="mini">적용 반</span>
+          <button class="cls-chip${on.length ? '' : ' on'}" data-act="cls-all">${esc(a.grade)}학년 모든 반</button>
+          ${cls.map(c => `<button class="cls-chip${on.includes(c) ? ' on' : ''}" data-act="cls" data-c="${esc(c)}">${esc(c)}반</button>`).join('')}
+          ${on.length ? `<span class="muted cls-sum">→ ${esc(classText(on))}만</span>` : ''}</div>`;
+      })() : ''}
       <div class="type-row">채점 방식
         <div class="seg">
           <button data-act="type" data-type="min" class="${a.type === 'min' ? 'on' : ''}">○개 이상 → □점</button>
@@ -1150,7 +1191,7 @@ function onCritEdit(e){
   const v = t.value;
   if (t.classList.contains('area-name')) a.name = v;
   else if (t.classList.contains('area-unit')){ a.unit = v; $$('.u', card).forEach(x => x.textContent = v); }
-  else if (t.classList.contains('area-gr')) a.grade = v;
+  else if (t.classList.contains('area-gr')){ a.grade = v; a.classes = []; }
   else if (t.classList.contains('area-grp')) a.group = v;
   else if (t.classList.contains('item-name')) a.items[+t.dataset.ii] = v;
   else if (t.classList.contains('r-min')) a.rules[+t.dataset.ri].min = v.trim() === '' ? '' : (isNum(v) ? Number(v) : v);
@@ -1164,7 +1205,7 @@ function onCritEdit(e){
 }
 critEl.addEventListener('input', onCritEdit);
 critEl.addEventListener('change', e => {
-  if (e.target.classList.contains('area-gr')) onCritEdit(e);
+  if (e.target.classList.contains('area-gr')){ onCritEdit(e); renderCriteria(); }
   if (e.target.classList.contains('item-name') && e.target.value.includes('/') && !e.target.dataset.split){
     e.target.dataset.split = '1';   // 다시 그릴 때 한 번 더 불리는 것 막기
     // "가 / 나 / 다" 를 여러 항목으로 나누기
@@ -1204,6 +1245,14 @@ critEl.addEventListener('click', e => {
     draftAreas.splice(i, 1);
   }
   else if (act === 'add-rule'){ draftAreas[i].rules.push({ min: '', score: '' }); }
+  else if (act === 'cls-all'){ draftAreas[i].classes = []; }
+  else if (act === 'cls'){
+    // '모든 반' 상태에서 반을 누르면 그 반부터 고르기 시작, 모두 고르면 다시 '모든 반'
+    const a = draftAreas[i], c = b.dataset.c, all = classesOf(a.grade);
+    let on = (a.classes || []).slice();
+    on = on.includes(c) ? on.filter(x => x !== c) : on.concat(c);
+    a.classes = on.length >= all.length ? [] : on.sort(cmpPart);
+  }
   else if (act === 'add-item'){ draftAreas[i].items.push(''); }
   else if (act === 'del-item'){ draftAreas[i].items.splice(+b.dataset.ii, 1); }
   else if (act === 'auto-rules'){
@@ -1248,6 +1297,7 @@ async function saveAreas(){
   const areas = draftAreas.map(a => ({
     id: a.id, name: String(a.name).trim(), unit: String(a.unit || '').trim(), grade: norm(a.grade),
     type: a.type, base: numOr(a.base, 0), per: numOr(a.per, 1), group: String(a.group || '').trim(), items: a.type === 'items' ? a.items : [],
+    classes: a.grade ? (a.classes || []) : [],
     lowest: isNum(a.lowest) ? Number(a.lowest) : '', gap: numOr(a.gap, 1),
     rules: a.rules.map(r => ({ min: Number(r.min), score: Number(r.score) }))
   }));
@@ -1733,7 +1783,7 @@ function renderStage(){
   } else {
     const s = studs[showIdx];
     $('#stagePos').textContent = `${showIdx + 1} / ${studs.length}`;
-    const mt = maxTotalFor(s.grade);
+    const mt = maxTotalFor(s);
     const tileOf = a => {
       const v = raws.get(s.key + '|' + a.id);
       const sc = scoreFor(a, v ?? '');
@@ -1756,9 +1806,9 @@ function renderStage(){
     };
     const tiles = blocksOf(data.areas.filter(a => applies(a, s))).map(b => {
       if (!b.group) return b.areas.map(tileOf).join('');
-      const gs = groupScore(s, b.areas, false), gm = groupMax(b.areas, s.grade);
+      const gs = groupScore(s, b.areas, false), gm = groupMax(b.areas, s);
       const pct = (gs !== null && gm) ? Math.max(0, Math.min(100, gs / gm * 100)) : 0;
-      return `<div class="grp-card">
+      return `<div class="grp-card" style="--n:${b.areas.length}">
         <div class="grp-head">
           <span class="grp-name">${esc(b.group)}</span>
           <span class="grp-score${gs === null ? ' none' : ''}">${gs === null ? '–' : fmt(gs)}<small>${gm !== null ? ` / ${fmt(gm)}점` : '점'}</small></span>
@@ -1768,12 +1818,14 @@ function renderStage(){
       </div>`;
     }).join('');
     const t = studentTotal(s, false);
-    body.innerHTML = `<div class="who"><span class="who-no">${esc(s.grade)}학년 ${esc(s.cls)}반 ${esc(s.no)}번</span><span class="who-name">${esc(s.name)}</span></div>
-      <div class="tiles">${tiles}</div>
-      <div class="sum"><span>합계</span><b>${t === null ? '–' : fmt(t)}</b><span>${mt !== null ? `/ ${fmt(mt)}점` : '점'}</span></div>`;
+    body.innerHTML = `<div class="who"><span class="who-no">${esc(s.grade)}학년 ${esc(s.cls)}반 ${esc(s.no)}번</span><span class="who-name">${esc(s.name)}</span>
+        <span class="spacer"></span>
+        <span class="who-total"><span>총점</span><b>${t === null ? '–' : fmt(t)}</b><small>${mt !== null ? `/ ${fmt(mt)}점` : '점'}</small></span></div>
+      <div class="tiles">${tiles}</div>`;
     const selEl = $('#showSel'); if (selEl) selEl.value = showIdx;
   }
   body.style.animation = 'none'; void body.offsetWidth; body.style.animation = '';
+  fitStage();
 }
 
 function moveShow(d){
@@ -1783,6 +1835,43 @@ function moveShow(d){
   showIdx = (showIdx + d + n) % n;
   renderStage();
 }
+// 학생 화면이 스크롤 없이 한 화면에 들어오도록 내용 크기를 줄임 (최대 45%까지)
+function fitStage(){
+  const st = $('#stage'), body = $('#stageBody');
+  if (!st || !body || (st.offsetParent === null && !document.fullscreenElement)) return;
+  // 화면 아래 끝까지만 차지하도록 높이를 맞춤 (전체 화면일 때는 100vh)
+  if (!document.fullscreenElement){
+    const top = st.getBoundingClientRect().top + window.scrollY;
+    st.style.height = Math.max(360, window.innerHeight - top - 24) + 'px';
+  } else st.style.height = '';
+  const cs = getComputedStyle(st);
+  const availH = st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const availW = st.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const fits = z => { body.style.zoom = z; body.style.width = (availW / z) + 'px'; return body.getBoundingClientRect().height <= availH + 1; };
+  // 들어가는 가장 큰 크기를 이분 탐색
+  const best = minZ => {
+    if (fits(1)) return 1;
+    let lo = minZ, hi = 1;
+    for (let k = 0; k < 9; k++){ const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
+    return lo;
+  };
+  if (showMode === 'all'){
+    // 표는 글씨가 너무 작아지지 않게 60%까지만 줄이고, 그래도 넘치면 안에서 스크롤
+    const z = best(0.6); fits(z);
+    st.classList.toggle('scroll', !fits(z));
+    return;
+  }
+  st.classList.remove('scroll');
+  // 묶음 카드를 나란히 / 한 줄에 하나씩 두 가지로 놓아 보고 더 크게 보이는 쪽을 고름
+  body.classList.remove('stack');
+  const zRow = best(0.4);
+  body.classList.add('stack');
+  const zStack = best(0.4);
+  if (zRow >= zStack){ body.classList.remove('stack'); fits(zRow); } else fits(zStack);
+}
+window.addEventListener('resize', () => { if (currentTab === 'show') fitStage(); });
+document.addEventListener('fullscreenchange', () => setTimeout(fitStage, 60));
+
 function toggleFs(){
   const st = $('#stage');
   if (!st) return;

@@ -215,6 +215,8 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .show-table td.abs-td{color:#3a4f9a;font-weight:700;font-size:.85em}
 .abs-txt{color:#3a4f9a}
 .abs-txt small{color:#5a6aa0}
+.cell .sc.over{background:#fde2dc;color:#b42318}
+.lowest-box .full-hint{font-size:13px}
 .miss-chk{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:var(--muted);margin-right:6px;cursor:pointer;user-select:none}
 .miss-chk input{margin:0;accent-color:var(--warn)}
 .cell.missing .miss-chk{color:var(--warn);font-weight:700}
@@ -586,7 +588,8 @@ function scoreFor(area, raw){
   for (const r of sorted) if (n >= Number(r.min)) return Number(r.score);
   return numOr(area.lowest, 0);
 }
-function maxFor(area){
+// 기준표로 계산되는 만점 (직접 적은 만점이 없을 때 사용)
+function autoMax(area){
   const type = areaType(area);
   if (type === 'items'){
     const rules = validRules(area);
@@ -597,8 +600,14 @@ function maxFor(area){
   if (type === 'direct' || !rules.length) return null;
   return Math.max(...rules.map(r => Number(r.score)), numOr(area.lowest, 0));
 }
+// 만점: 감점 방식은 '만점' 칸(base), 나머지는 직접 적은 만점 → 없으면 기준표에서 계산
+function maxFor(area){
+  if (areaType(area) === 'deduct') return numOr(area.base, 0);
+  return isNum(area.full) ? Number(area.full) : autoMax(area);
+}
 function ruleText(area){
-  const miss = ` · 미제출 ${fmt(missingScore(area))}점`;
+  const mx = areaType(area) !== 'deduct' ? maxFor(area) : null;
+  const miss = ` · 미제출 ${fmt(missingScore(area))}점` + (mx !== null ? ` · 만점 ${fmt(mx)}점` : '');
   const type = areaType(area);
   if (type === 'items'){
     const n = (area.items || []).length, rules = validRules(area);
@@ -703,7 +712,7 @@ async function api(action, payload = {}){
 }
 
 // 이 웹페이지가 기대하는 시트 코드(Code.gs) 버전
-const SERVER_VERSION = 11;
+const SERVER_VERSION = 12;
 let serverVersion = 99;
 function checkServerVersion(d){
   serverVersion = cfg.demo ? 99 : (Number(d.version) || 0);
@@ -725,6 +734,7 @@ function applyData(d){
       o.group = String(a.group ?? '').trim();
       o.items = Array.isArray(a.items) ? a.items.map(x => String(x)) : [];
       o.classes = o.grade && Array.isArray(a.classes) ? a.classes.map(norm).filter(Boolean) : [];
+      o.full = isNum(a.full) ? Number(a.full) : '';
       return o;
     }),
     students: (d.students || []).map(s => {
@@ -988,7 +998,7 @@ function renderInput(){
           <div class="items-foot"><span class="cnt">${isItemsRaw(v) ? `${cnt}/${a.items.length}개` : ''}</span><label class="miss-chk"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label>${absChk}<span class="sc">${abs ? '결시' : sc === null ? '' : fmt(sc) + '점'}</span>${isOut ? '' : `<button type="button" class="chip-clear" title="이 칸 비우기">지우기</button>`}</div></td>`;
         return;
       }
-      h += `<td class="cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}${abs ? ' absent' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}"><input class="raw" data-r="${i}" data-c="${j}" data-k="${esc(k)}" value="${miss || abs ? '' : esc(fmt(v))}" placeholder="${miss ? '미제출' : abs ? '결시' : ''}" ${miss || abs || isOut ? 'disabled' : ''} inputmode="decimal" autocomplete="off"><span class="unit">${esc(a.unit)}</span><label class="miss-chk" title="미제출 (x 키로도 표시)"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label>${absChk}<span class="sc">${abs ? '결시' : sc === null ? '' : fmt(sc) + '점'}</span></td>`;
+      h += `<td class="cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}${abs ? ' absent' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}"><input class="raw" data-r="${i}" data-c="${j}" data-k="${esc(k)}" value="${miss || abs ? '' : esc(fmt(v))}" placeholder="${miss ? '미제출' : abs ? '결시' : ''}" ${miss || abs || isOut ? 'disabled' : ''} inputmode="decimal" autocomplete="off"><span class="unit">${esc(a.unit)}</span><label class="miss-chk" title="미제출 (x 키로도 표시)"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label>${absChk}<span class="sc${sc !== null && maxFor(a) !== null && sc > maxFor(a) ? ' over' : ''}">${abs ? '결시' : sc === null ? '' : fmt(sc) + '점'}</span></td>`;
     });
       if (b.group){ const gs = groupScore(s, b.all, true); h += `<td class="sub-col" data-sg="${esc(b.group)}" data-sr="${i}">${gs === null ? '–' : fmt(gs) + '점'}</td>`; }
     });
@@ -1046,6 +1056,9 @@ function commitCell(td, val){
   }
   const sc = scoreFor(a, val);
   td.querySelector('.sc').textContent = abs ? '결시' : sc === null ? '' : fmt(sc) + '점';
+  const mxv = maxFor(a);
+  td.querySelector('.sc').classList.toggle('over', sc !== null && mxv !== null && sc > mxv);
+  td.querySelector('.sc').title = sc !== null && mxv !== null && sc > mxv ? `만점(${fmt(mxv)}점)보다 높아요` : '';
   const t = studentTotal(s, true);
   $(`td[data-t="${i}"]`).textContent = t === null ? '–' : fmt(t) + '점';
   $(`td[data-t="${i}"]`).classList.toggle('has-abs', hasAbs(s, data.areas));
@@ -1223,6 +1236,10 @@ function renderCriteria(){
     if (a.type === 'min' || a.type === 'items') h += `<div><button class="btn sm" data-act="add-rule">+ 기준 줄 추가</button></div>`;
     h += `</div>
       <div class="lowest-box">
+        <div class="rule"><b>만점</b> ${a.type === 'deduct'
+          ? `<b class="full-out">${fmt(numOr(a.base, 0))}점</b> <span class="muted">감점 방식은 위에서 정한 만점을 써요.</span>`
+          : `<input class="field full" value="${esc(a.full ?? '')}" inputmode="decimal" placeholder="${autoMax(a) !== null ? fmt(autoMax(a)) : '없음'}"> 점
+             <span class="muted full-hint">${a.type === 'direct' ? '입력값 그대로는 만점을 적어 주세요. 학생 화면에 "점수 / 만점"으로 나와요.' : `비워두면 기준표의 가장 높은 점수(${autoMax(a) !== null ? fmt(autoMax(a)) + '점' : '–'})가 만점이에요.`}</span>`}</div>
         <div class="rule"><b>최하점</b> <input class="field lowest" value="${esc(a.lowest)}" inputmode="decimal" placeholder="${a.type === 'direct' ? '없음' : '0'}"> 점
           <span class="muted">${a.type === 'min' || a.type === 'items' ? '어느 기준에도 못 미치면 최하점을 줘요.' : a.type === 'deduct' ? '감점해도 최하점 아래로는 내려가지 않아요.' : '비워두면 최하점 제한 없음.'}</span></div>
         <div class="rule"><b>미제출</b> 최하점보다 <input class="field gap" value="${esc(a.gap)}" inputmode="decimal"> 점 낮은 차하점 → <b class="miss-out">${fmt(missingScore(a))}점</b></div>
@@ -1256,6 +1273,8 @@ function refreshCardInfo(card, a){
   $('.t-out', card).textContent = sc === null ? '–' : fmt(sc) + '점';
   $('.summary-line', card).textContent = ruleText(a);
   $('.miss-out', card).textContent = fmt(missingScore(a)) + '점';
+  const fo = $('.full-out', card); if (fo) fo.textContent = fmt(numOr(a.base, 0)) + '점';
+  const fi = $('.full', card); if (fi) fi.placeholder = autoMax(a) !== null ? fmt(autoMax(a)) : '없음';
 }
 
 const critEl = $('#tab-criteria');
@@ -1272,6 +1291,7 @@ function onCritEdit(e){
   else if (t.classList.contains('r-min')) a.rules[+t.dataset.ri].min = v.trim() === '' ? '' : (isNum(v) ? Number(v) : v);
   else if (t.classList.contains('r-score')) a.rules[+t.dataset.ri].score = v.trim() === '' ? '' : (isNum(v) ? Number(v) : v);
   else if (t.classList.contains('lowest')) a.lowest = v.trim() === '' ? '' : v;
+  else if (t.classList.contains('full')) a.full = v.trim() === '' ? '' : v;
   else if (t.classList.contains('gap')) a.gap = v;
   else if (t.classList.contains('d-base')) a.base = v;
   else if (t.classList.contains('d-per')) a.per = v;
@@ -1366,6 +1386,7 @@ async function saveAreas(){
     if (a.type === 'deduct' && [a.base, a.per].some(v => !isNum(v))){ toast(`'${a.name}'의 만점·감점을 숫자로 채워 주세요.`, 'err'); return false; }
     if (a.type !== 'direct' && !isNum(a.lowest)){ toast(`'${a.name}'의 최하점을 숫자로 채워 주세요.`, 'err'); return false; }
     if (a.lowest !== '' && !isNum(a.lowest)){ toast(`'${a.name}'의 최하점이 숫자가 아니에요.`, 'err'); return false; }
+    if (a.full !== '' && a.full !== undefined && !isNum(a.full)){ toast(`'${a.name}'의 만점이 숫자가 아니에요.`, 'err'); return false; }
     if (!isNum(a.gap)){ toast(`'${a.name}'의 미제출 차감 점수를 숫자로 채워 주세요.`, 'err'); return false; }
   }
   draftAreas = clusterAreas(draftAreas);
@@ -1373,6 +1394,7 @@ async function saveAreas(){
     id: a.id, name: String(a.name).trim(), unit: String(a.unit || '').trim(), grade: norm(a.grade),
     type: a.type, base: numOr(a.base, 0), per: numOr(a.per, 1), group: String(a.group || '').trim(), items: a.type === 'items' ? a.items : [],
     classes: a.grade ? (a.classes || []) : [],
+    full: a.type !== 'deduct' && isNum(a.full) ? Number(a.full) : '',
     lowest: isNum(a.lowest) ? Number(a.lowest) : '', gap: numOr(a.gap, 1),
     rules: a.rules.map(r => ({ min: Number(r.min), score: Number(r.score) }))
   }));

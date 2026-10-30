@@ -226,6 +226,27 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-co
 .lowest-box{display:grid;gap:8px;margin-bottom:12px;padding:10px 12px;background:#f7f6f2;border-radius:10px;font-size:14px}
 .lowest-box .rule input{width:70px}
 .miss-out{color:var(--warn)}
+/* 점수 메모 */
+.memo-btn{border:1px solid var(--line);background:#fff;border-radius:7px;padding:2px 7px;font-size:12px;cursor:pointer;color:var(--muted);margin-left:6px;vertical-align:middle;line-height:1.4}
+.memo-btn:hover{border-color:var(--accent);color:var(--ink)}
+.memo-btn.on{background:#fff4d6;border-color:#e9cf87;color:#7a5a1c;font-weight:700}
+.items-foot .memo-btn{margin-left:2px}
+.memo-line{margin-top:4px;font-size:12px;color:#7a5a1c;background:#fffaf0;border-radius:6px;padding:1px 7px;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.memo-line:empty{display:none}
+.memo-pop{position:fixed;z-index:60;width:320px;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.16);padding:12px}
+.memo-pop[hidden]{display:none}
+.mp-head{display:flex;gap:6px;align-items:baseline;margin-bottom:8px;font-size:14px;flex-wrap:wrap}
+.mp-head .muted{font-size:13px}
+.memo-pop textarea{width:100%;min-height:72px;resize:vertical;line-height:1.5}
+.mp-recent{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.mp-recent:empty{display:none}
+.mp-recent button{border:1px solid var(--line);background:#faf9f6;border-radius:999px;padding:2px 9px;font-size:12px;cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mp-recent button:hover{border-color:var(--accent)}
+.mp-recent button kbd{font:inherit;font-size:11px;color:var(--muted);margin-right:3px}
+.mp-foot{display:flex;align-items:center;gap:6px;margin-top:8px}
+.mp-keys{font-size:11.5px;color:var(--muted);line-height:1.4;flex:1}
+.memo-local{font-size:13px;color:#7a5a1c;background:#fffaf0;border:1px solid #f0e2c0;border-radius:10px;padding:8px 12px;margin:-4px 0 12px}
+kbd.k{display:inline-block;font:inherit;font-size:12px;font-weight:700;border:1px solid #d6d3ca;border-bottom-width:2px;border-radius:5px;padding:0 5px;background:#fff;color:var(--ink);line-height:1.4}
 .dirty-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warn);margin-left:6px;vertical-align:middle}
 
 /* 학생 명단 */
@@ -400,6 +421,16 @@ dialog::backdrop{background:rgba(30,30,30,.35)}
     </div>
   </div>
 </dialog>
+<div id="memoPop" class="memo-pop" hidden>
+  <div class="mp-head"><b id="mpWho"></b><span class="muted" id="mpArea"></span></div>
+  <textarea class="field" id="mpText" placeholder="이 점수에 대한 메모 (선택)&#10;예: 3일 늦게 제출, 재평가 예정"></textarea>
+  <div class="mp-recent" id="mpRecent"></div>
+  <div class="mp-foot">
+    <span class="mp-keys"><kbd class="k">Enter</kbd> 저장 후 다음 학생 · <kbd class="k">Shift</kbd>+<kbd class="k">Enter</kbd> 줄바꿈 · <kbd class="k">Esc</kbd> 취소</span>
+    <button class="btn sm ghost danger" id="mpDel">지우기</button>
+    <button class="btn sm primary" id="mpOk">확인</button>
+  </div>
+</div>
 <div id="toast"></div>
 
 <script>
@@ -428,6 +459,10 @@ let cfg = recall(CFG_KEY) || {};
 let data = { areas: [], students: [], records: [] };
 let raws = new Map();          // '학생키|영역ID' -> 저장된 원값
 let pending = new Map();       // 저장 전 수정한 원값
+// 점수 메모: 점수(원값)와는 완전히 따로 보관·저장 — 메모를 저장해도 점수는 절대 바뀌지 않음
+let memos = new Map();         // '학생키|영역ID' -> 저장된 메모
+let memoPending = new Map();   // 저장 전 수정한 메모 ('' = 지우기)
+const unsavedCount = () => pending.size + memoPending.size;
 let draftAreas = null, draftDirty = false;
 let stuDirty = false, stuView = 'class';  // 'class' | 'text' | 'import'
 let showOut = false;           // 점수 입력에서 전출생 보기
@@ -719,6 +754,30 @@ function checkServerVersion(d){
   const old = !cfg.demo && serverVersion < SERVER_VERSION;
   $('#verWarn').hidden = !old;
 }
+// 메모를 시트에 저장할 수 있는 Code.gs 버전 (그 전에는 이 브라우저에 임시 저장)
+const MEMO_VERSION = 13;
+const memoOnServer = () => cfg.demo || serverVersion >= MEMO_VERSION;
+function memoLocalKey(){
+  const u = cfg.demo ? 'demo' : String(cfg.url || '').replace(/^https:\/\/script\.google\.com\/macros\/s\//, '').slice(0, 80);
+  return `grader-memos|${u}|${currentTerm}`;
+}
+// 시트가 메모를 지원하게 된 뒤, 이 브라우저에 임시로 있던 메모를 '저장 대기'로 올림
+function adoptLocalMemos(){
+  if (cfg.demo || !memoOnServer()) return;
+  const local = recall(memoLocalKey());
+  if (!local) return;
+  let n = 0;
+  Object.entries(local).forEach(([k, v]) => {
+    if (String(v || '').trim() && !memos.has(k)){ memoPending.set(k, String(v)); n++; }
+  });
+  if (n) toast(`이 브라우저에 임시로 있던 메모 ${n}개를 시트로 옮길게요. 점수 입력 탭에서 저장을 눌러 주세요.`);
+  else { try { localStorage.removeItem(memoLocalKey()); } catch(e) {} }
+}
+function memoOf(k, withPending = true){ return withPending && memoPending.has(k) ? memoPending.get(k) : (memos.get(k) ?? ''); }
+function setMemo(k, text){
+  text = String(text ?? '').replace(/\s+$/, '');
+  if (text === (memos.get(k) ?? '')) memoPending.delete(k); else memoPending.set(k, text);
+}
 function applyData(d){
   checkServerVersion(d);
   if (d.terms) terms = d.terms;
@@ -746,6 +805,10 @@ function applyData(d){
   };
   data.areas = clusterAreas(data.areas);
   raws = new Map(data.records.map(r => [r.key + '|' + r.areaId, r.raw]));
+  if (memoOnServer()){
+    // 응답에 메모가 들어 있을 때만 바꿈 (없으면 가진 메모 그대로)
+    if (Array.isArray(d.memos)) memos = new Map(d.memos.filter(m => m && String(m.memo ?? '').trim()).map(m => [m.key + '|' + m.areaId, String(m.memo)]));
+  } else memos = new Map(Object.entries(recall(memoLocalKey()) || {}));
   extraGroups = extraGroups.filter(g => !data.students.some(s => s.grade === g.grade && s.cls === g.cls));
   renderGroupSel();
 }
@@ -812,9 +875,17 @@ function demoApi(action, p){
       else if (!isNum(c.raw)) m.delete(k); else m.set(k, { key: c.key, areaId: c.areaId, raw: Number(c.raw) });
     }
     td.records = [...m.values()];
+  } else if (action === 'saveMemos'){
+    // 메모만 따로 저장 (점수 records는 건드리지 않음)
+    const m = new Map((td.memos || []).map(x => [x.key + '|' + x.areaId, x]));
+    for (const c of p.memos){
+      const k = c.key + '|' + c.areaId, text = String(c.memo ?? '').trim() ? String(c.memo) : '';
+      if (text) m.set(k, { key: c.key, areaId: c.areaId, memo: text }); else m.delete(k);
+    }
+    td.memos = [...m.values()];
   }
   store(DEMO_KEY, d);
-  const out = { terms: d.terms, term: t, areas: td.areas, students: d.years[y] || [], records: td.records };
+  const out = { terms: d.terms, term: t, areas: td.areas, students: d.years[y] || [], records: td.records, memos: td.memos || [] };
   return new Promise(r => setTimeout(() => r(clone(out)), 150));
 }
 
@@ -825,7 +896,7 @@ function renderTermSel(){
     `<option value="__new">＋ 새 학기 만들기…</option>`;
   el.disabled = !(cfg.url || cfg.demo);
 }
-function hasUnsaved(){ return pending.size || draftDirty || stuDirty; }
+function hasUnsaved(){ return unsavedCount() || draftDirty || stuDirty; }
 $('#termSel').onchange = async e => {
   const v = e.target.value;
   if (v === '__new'){ renderTermSel(); openTermDlg(); return; }
@@ -870,7 +941,7 @@ $('#tCreate').onclick = async () => {
   try {
     const d = await api('createTerm', { newTerm: t, copyFrom: $('#tCopy').value });
     sel = null; extraGroups = []; showIdx = 0;
-    pending.clear(); draftAreas = null; draftDirty = false; stuDirty = false;
+    pending.clear(); memoPending.clear(); draftAreas = null; draftDirty = false; stuDirty = false;
     applyData(d);
     tDlg.close();
     if (newYear){
@@ -886,7 +957,8 @@ async function reload(){
   setStatus('불러오는 중…');
   try {
     applyData(await api('load'));
-    pending.clear(); draftAreas = null; draftDirty = false; stuDirty = false;
+    pending.clear(); memoPending.clear(); draftAreas = null; draftDirty = false; stuDirty = false;
+    adoptLocalMemos();
     setStatus('');
   } catch(e) {
     setStatus(''); toast(e.message, 'err');
@@ -906,7 +978,7 @@ async function switchTab(t){
     if (!confirm('학생 명단에 저장하지 않은 변경이 있어요. 버리고 이동할까요?')) return;
     stuDirty = false;
   }
-  if (t === 'show' && pending.size) await saveRecords();
+  if (t === 'show' && unsavedCount()) await saveRecords();
   currentTab = t;
   $$('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   $$('.panel').forEach(p => p.hidden = p.id !== 'tab-' + t);
@@ -946,7 +1018,7 @@ function renderInput(){
 
   let h = `<div class="toolbar">
     <span class="group-title">${esc(selLabel())}</span>
-    <div class="hint">숫자를 넣으면 기준에 따라 점수가 바로 계산돼요. 안 낸 학생은 <b>미제출</b>(또는 칸에 <b>x</b>), 빠진 학생은 <b>결시</b>(또는 칸에 <b>결시</b>)로 표시해요. Enter·↑↓로 위아래 이동.</div>
+    <div class="hint">숫자를 넣으면 기준에 따라 점수가 바로 계산돼요. 안 낸 학생은 <b>미제출</b>(또는 칸에 <b>x</b>), 빠진 학생은 <b>결시</b>(또는 칸에 <b>결시</b>)로 표시해요. Enter·↑↓로 위아래 이동. 점수 칸에서 <kbd class="k">/</kbd> 키를 누르면 그 점수에 <b>메모</b>를 달 수 있어요.</div>
     <button class="btn ${absPanel ? 'abs-on' : 'ghost'}" id="toggleAbs">결시 ${absStudents.size}명</button>
     ${outCount ? `<button class="btn ghost" id="toggleOut">${showOut ? '전출생 숨기기' : `전출 ${outCount}명 보기`}</button>` : ''}
     <button class="btn ghost" id="revertRec">되돌리기</button>
@@ -956,6 +1028,7 @@ function renderInput(){
     <button class="focus-pill${!inputFocus ? ' on' : ''}" data-f="">전체 보기</button>
     ${fOpts.map(o => `<button class="focus-pill${o.grp ? ' grp' : ''}${inputFocus === o.v ? ' on' : ''}" data-f="${esc(o.v)}">${o.grp ? '📁 ' : ''}${esc(o.label)}${o.grp ? ` <small>${o.n}</small>` : ''}</button>`).join('')}
   </div>` : ''}
+  ${!memoOnServer() && (memos.size || memoPending.size) ? `<div class="memo-local">📝 메모는 지금 <b>이 브라우저에만</b> 저장돼요. 시트 코드(Code.gs)를 메모 지원 버전으로 바꾸면 다음에 불러올 때 시트로 옮겨져요. 점수는 지금처럼 시트에 저장돼요.</div>` : ''}
   ${absPanel ? `<div class="card abs-panel">
     <div class="abs-head"><b>결시생 모아보기</b> <span class="muted">· ${esc(selLabel())} · ${inputFocus ? '고른 영역' : '전체 영역'} 기준</span>
       <span class="spacer"></span>
@@ -986,7 +1059,10 @@ function renderInput(){
     blocks.forEach(b => { b.areas.forEach(a => { j++;
       if (!applies(a, s)){ h += `<td class="cell n-a">·</td>`; return; }
       const k = s.key + '|' + a.id;
-      const changed = pending.has(k);
+      const changed = pending.has(k) || memoPending.has(k);
+      const memo = memoOf(k);
+      const memoBtn = `<button type="button" class="memo-btn${memo ? ' on' : ''}" title="${memo ? esc(memo) + '\n\n' : ''}메모 (점수 칸에서 / 키)">메모</button>`;
+      const memoLine = `<div class="memo-line" title="${esc(memo)}">${esc(memo.replace(/\s+/g, ' '))}</div>`;
       const v = rawOf(s, a, true);
       const sc = scoreFor(a, v);
       const miss = v === MISS, abs = v === ABS;
@@ -995,10 +1071,10 @@ function renderInput(){
         const bits = itemBits(a, v), cnt = bits.filter(Boolean).length;
         h += `<td class="cell items-cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}${abs ? ' absent' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}">
           <div class="chips">${a.items.map((nm, bi) => `<button type="button" class="chip${bits[bi] ? ' on' : ''}" data-b="${bi}" ${miss || abs || isOut ? 'disabled' : ''} title="${esc(nm)}">${esc(nm)}</button>`).join('')}</div>
-          <div class="items-foot"><span class="cnt">${isItemsRaw(v) ? `${cnt}/${a.items.length}개` : ''}</span><label class="miss-chk"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label>${absChk}<span class="sc">${abs ? '결시' : sc === null ? '' : fmt(sc) + '점'}</span>${isOut ? '' : `<button type="button" class="chip-clear" title="이 칸 비우기">지우기</button>`}</div></td>`;
+          <div class="items-foot"><span class="cnt">${isItemsRaw(v) ? `${cnt}/${a.items.length}개` : ''}</span><label class="miss-chk"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label>${absChk}<span class="sc">${abs ? '결시' : sc === null ? '' : fmt(sc) + '점'}</span>${memoBtn}${isOut ? '' : `<button type="button" class="chip-clear" title="이 칸 비우기">지우기</button>`}</div>${memoLine}</td>`;
         return;
       }
-      h += `<td class="cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}${abs ? ' absent' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}"><input class="raw" data-r="${i}" data-c="${j}" data-k="${esc(k)}" value="${miss || abs ? '' : esc(fmt(v))}" placeholder="${miss ? '미제출' : abs ? '결시' : ''}" ${miss || abs || isOut ? 'disabled' : ''} inputmode="decimal" autocomplete="off"><span class="unit">${esc(a.unit)}</span><label class="miss-chk" title="미제출 (x 키로도 표시)"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label>${absChk}<span class="sc${sc !== null && maxFor(a) !== null && sc > maxFor(a) ? ' over' : ''}">${abs ? '결시' : sc === null ? '' : fmt(sc) + '점'}</span></td>`;
+      h += `<td class="cell${changed ? ' changed' : ''}${miss ? ' missing' : ''}${abs ? ' absent' : ''}" data-r="${i}" data-c="${j}" data-k="${esc(k)}"><input class="raw" data-r="${i}" data-c="${j}" data-k="${esc(k)}" value="${miss || abs ? '' : esc(fmt(v))}" placeholder="${miss ? '미제출' : abs ? '결시' : ''}" ${miss || abs || isOut ? 'disabled' : ''} inputmode="decimal" autocomplete="off"><span class="unit">${esc(a.unit)}</span><label class="miss-chk" title="미제출 (x 키로도 표시)"><input type="checkbox" class="miss" ${miss ? 'checked' : ''} ${isOut ? 'disabled' : ''}>미제출</label>${absChk}<span class="sc${sc !== null && maxFor(a) !== null && sc > maxFor(a) ? ' over' : ''}">${abs ? '결시' : sc === null ? '' : fmt(sc) + '점'}</span>${memoBtn}${memoLine}</td>`;
     });
       if (b.group){ const gs = groupScore(s, b.all, true); h += `<td class="sub-col" data-sg="${esc(b.group)}" data-sr="${i}">${gs === null ? '–' : fmt(gs) + '점'}</td>`; }
     });
@@ -1013,8 +1089,9 @@ function renderInput(){
 function updateSaveBtn(){
   const b = $('#saveRec'), r = $('#revertRec');
   if (!b) return;
-  b.disabled = !pending.size; r.disabled = !pending.size;
-  b.textContent = pending.size ? `저장 (${pending.size})` : '저장됨';
+  const n = unsavedCount();
+  b.disabled = !n; r.disabled = !n;
+  b.textContent = n ? `저장 (${n})` : '저장됨';
 }
 
 function onRawInput(inp, forceVal){
@@ -1043,7 +1120,7 @@ function commitCell(td, val){
   td.classList.toggle('absent', abs);
   $('.miss', td).checked = miss;
   $('.abs', td).checked = abs;
-  td.classList.toggle('changed', pending.has(k));
+  td.classList.toggle('changed', pending.has(k) || memoPending.has(k));
   const inp = $('.raw', td);
   if (inp){
     inp.disabled = miss || abs; inp.placeholder = miss ? '미제출' : abs ? '결시' : '';
@@ -1069,7 +1146,47 @@ function commitCell(td, val){
   updateSaveBtn();
 }
 
+// 저장 버튼: 점수 먼저(기존 방식 그대로), 그다음 메모를 따로 저장
 async function saveRecords(){
+  if (!unsavedCount()) return true;
+  if (pending.size && !(await saveScores())) return false;
+  if (memoPending.size && !(await saveMemos())) return false;
+  return true;
+}
+async function saveMemos(){
+  if (!memoPending.size) return true;
+  if (!memoOnServer()){
+    // 시트 코드가 아직 메모를 모르면 이 브라우저에만 저장
+    const obj = Object.fromEntries(memos);
+    memoPending.forEach((v, k) => { if (v.trim()) obj[k] = v; else delete obj[k]; });
+    store(memoLocalKey(), obj);
+    memos = new Map(Object.entries(obj)); memoPending.clear();
+    toast(pending.size ? '저장했어요' : '메모를 이 브라우저에 저장했어요');
+    if (currentTab === 'input') renderInput();
+    return true;
+  }
+  const list = [...memoPending].map(([k, memo]) => {
+    const p = k.lastIndexOf('|');
+    return { key: k.slice(0, p), areaId: k.slice(p + 1), memo };
+  });
+  setStatus('메모 저장 중…');
+  const btn = $('#saveRec'); if (btn) btn.disabled = true;
+  try {
+    const d = await api('saveMemos', { memos: list });
+    // 메모 저장 응답에는 점수가 바뀌지 않았으므로 메모만 반영
+    if (d && Array.isArray(d.memos)) memos = new Map(d.memos.filter(m => m && String(m.memo ?? '').trim()).map(m => [m.key + '|' + m.areaId, String(m.memo)]));
+    else memoPending.forEach((v, k) => { if (v.trim()) memos.set(k, v); else memos.delete(k); });
+    memoPending.clear();
+    if (!cfg.demo){ try { localStorage.removeItem(memoLocalKey()); } catch(e) {} }
+    setStatus(''); toast('저장했어요');
+    if (currentTab === 'input') renderInput();
+    return true;
+  } catch(e) {
+    setStatus(''); toast('메모 저장 실패: ' + e.message, 'err'); updateSaveBtn();
+    return false;
+  }
+}
+async function saveScores(){
   if (!pending.size) return true;
   // 예전 Code.gs는 '결시'를 모르고 그 칸을 지워 버리므로 저장을 막음
   if (serverVersion < 11 && [...pending.values()].includes(ABS)){
@@ -1138,13 +1255,126 @@ inputEl.addEventListener('keydown', e => {
   if (next){ next.focus(); next.select(); }
 });
 inputEl.addEventListener('focusin', e => { if (e.target.classList.contains('raw')) e.target.select(); });
+
+/* ---- 점수 메모 ---- */
+const memoPop = $('#memoPop'), mpText = $('#mpText');
+let memoCtx = null;   // { k, r, c, fromInput }
+const cellOf = k => $$('td[data-k]', inputEl).find(x => x.dataset.k === k);
+// 같은 열에서 위/아래 학생의 점수 칸으로 (적용되지 않는 칸은 건너뜀)
+function focusNextRaw(r, c, dr){
+  let i = r + dr, next = null;
+  while (i >= 0 && !next){
+    next = $(`.raw[data-r="${i}"][data-c="${c}"]`, inputEl);
+    if (next && next.disabled) next = null;
+    if (!$(`td[data-t="${i}"]`, inputEl)) break;
+    i += dr;
+  }
+  if (next){ next.focus(); next.select(); }
+  return !!next;
+}
+// 같은 영역에서 자주 쓴 메모 (빠른 입력용)
+function recentMemos(areaId, exceptKey){
+  const cnt = new Map();
+  const all = new Map(memos); memoPending.forEach((v, k) => all.set(k, v));
+  [...all].reverse().forEach(([k, v]) => {
+    const t = String(v || '').trim();
+    if (!t || k === exceptKey || !k.endsWith('|' + areaId) || t.length > 40) return;
+    cnt.set(t, (cnt.get(t) || 0) + 1);
+  });
+  return [...cnt].sort((a, b) => b[1] - a[1]).slice(0, 6).map(x => x[0]);
+}
+function placeMemoPop(){
+  if (!memoCtx) return;
+  const td = cellOf(memoCtx.k); if (!td) return;
+  const r = td.getBoundingClientRect(), w = memoPop.offsetWidth, h = memoPop.offsetHeight;
+  let top = r.bottom + 6; if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 6);
+  const left = Math.min(Math.max(8, r.left), innerWidth - w - 8);
+  memoPop.style.top = top + 'px'; memoPop.style.left = left + 'px';
+}
+function openMemo(td, fromInput){
+  if (memoCtx) closeMemo(true, 'none');
+  const k = td.dataset.k, r = +td.dataset.r, c = +td.dataset.c;
+  const s = curStuds[r], a = curAreas[c];
+  if (!s || !a) return;
+  memoCtx = { k, r, c, fromInput, areaId: a.id };
+  $('#mpWho').textContent = `${s.no}번 ${s.name}`;
+  const v = rawOf(s, a, true), sc = scoreFor(a, v);
+  $('#mpArea').textContent = `· ${a.group ? a.group + ' › ' : ''}${a.name}` + (v === ABS ? ' · 결시' : v === MISS ? ' · 미제출' : sc !== null ? ` · ${fmt(sc)}점` : '');
+  mpText.value = memoOf(k);
+  const rec = recentMemos(a.id, k);
+  $('#mpRecent').innerHTML = rec.map((t, i) => `<button type="button" data-t="${esc(t)}" title="Alt+${i + 1}"><kbd>${i + 1}</kbd>${esc(t)}</button>`).join('');
+  $('#mpDel').hidden = !memoOf(k);
+  memoPop.hidden = false;
+  placeMemoPop();
+  mpText.focus(); mpText.setSelectionRange(mpText.value.length, mpText.value.length);
+}
+// apply: true = 적어 둔 메모 반영, false = 취소
+function closeMemo(apply, move){
+  if (!memoCtx) return;
+  const ctx = memoCtx; memoCtx = null;
+  memoPop.hidden = true;
+  if (apply) setMemo(ctx.k, mpText.value);
+  const td = cellOf(ctx.k);
+  if (td){
+    const memo = memoOf(ctx.k), btn = $('.memo-btn', td), line = $('.memo-line', td);
+    btn.classList.toggle('on', !!memo);
+    btn.title = (memo ? memo + '\n\n' : '') + '메모 (점수 칸에서 / 키)';
+    line.textContent = memo.replace(/\s+/g, ' '); line.title = memo;
+    td.classList.toggle('changed', pending.has(ctx.k) || memoPending.has(ctx.k));
+  }
+  updateSaveBtn();
+  if (move === 'next' && ctx.fromInput && focusNextRaw(ctx.r, ctx.c, 1)) return;
+  if (move !== 'none' && td){ const inp = $('.raw', td); if (inp && !inp.disabled){ inp.focus(); inp.select(); } else $('.memo-btn', td)?.focus(); }
+}
+function addRecentMemo(t){
+  const cur = mpText.value.replace(/\s+$/, '');
+  mpText.value = cur ? (cur.includes(t) ? cur : cur + ', ' + t) : t;
+  mpText.focus();
+}
+inputEl.addEventListener('click', e => {
+  const b = e.target.closest('.memo-btn, .memo-line');
+  if (!b) return;
+  const td = b.closest('td');
+  if (memoCtx && memoCtx.k === td.dataset.k){ closeMemo(true, 'none'); return; }
+  openMemo(td, !!$('.raw', td));
+});
+// 점수 칸에서 '/' → 메모 (한글 입력 중이어도 '/'가 들어가면 메모로)
+inputEl.addEventListener('keydown', e => {
+  if (!e.target.classList.contains('raw')) return;
+  if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); openMemo(e.target.closest('td'), true); }
+});
+inputEl.addEventListener('input', e => {
+  const t = e.target;
+  if (!t.classList.contains('raw') || !t.value.includes('/')) return;
+  t.value = t.value.replace(/\//g, ''); onRawInput(t);
+  openMemo(t.closest('td'), true);
+}, true);
+mpText.addEventListener('keydown', e => {
+  if (e.isComposing || e.keyCode === 229) return;   // 한글 조합 중 Enter는 무시
+  if (e.key === 'Escape'){ e.preventDefault(); closeMemo(false); }
+  else if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); closeMemo(true, (e.ctrlKey || e.metaKey) ? 'stay' : 'next'); }
+  else if (e.altKey && /^Digit[1-6]$/.test(e.code)){
+    const b = $$('#mpRecent button')[+e.code.slice(5) - 1];
+    if (b){ e.preventDefault(); addRecentMemo(b.dataset.t); }
+  }
+});
+$('#mpRecent').addEventListener('click', e => { const b = e.target.closest('button'); if (b) addRecentMemo(b.dataset.t); });
+$('#mpOk').onclick = () => closeMemo(true);
+$('#mpDel').onclick = () => { mpText.value = ''; closeMemo(true); };
+// 바깥을 누르면 적어 둔 내용을 반영하고 닫기
+document.addEventListener('mousedown', e => {
+  if (!memoCtx || memoPop.contains(e.target) || e.target.closest('.memo-btn, .memo-line')) return;
+  closeMemo(true, 'none');
+});
+window.addEventListener('scroll', placeMemoPop, true);
+window.addEventListener('resize', placeMemoPop);
 inputEl.addEventListener('click', e => {
   if (e.target.id === 'saveRec') saveRecords();
   if (e.target.id === 'toggleOut'){ showOut = !showOut; renderInput(); }
   if (e.target.id === 'toggleAbs'){ absPanel = !absPanel; if (!absPanel) absOnly = false; renderInput(); }
   const pill = e.target.closest('.focus-pill');
   if (pill){ inputFocus = pill.dataset.f; store('grader-focus', inputFocus); renderInput(); }
-  if (e.target.id === 'revertRec' && confirm('저장하지 않은 입력을 모두 되돌릴까요?')){ pending.clear(); renderInput(); }
+  if (e.target.id === 'revertRec' && confirm('저장하지 않은 입력(점수·메모)을 모두 되돌릴까요?')){ pending.clear(); memoPending.clear(); renderInput(); }
 });
 
 /* ================= 채점 기준 ================= */
@@ -2269,7 +2499,7 @@ function openSettings(){
 $('#settingsBtn').onclick = openSettings;
 $('#cfgClose').onclick = () => dlg.close();
 $('#reloadBtn').onclick = () => {
-  if ((pending.size || draftDirty || stuDirty) && !confirm('저장하지 않은 변경이 사라져요. 다시 불러올까요?')) return;
+  if ((unsavedCount() || draftDirty || stuDirty) && !confirm('저장하지 않은 변경이 사라져요. 다시 불러올까요?')) return;
   reload();
 };
 $('#demoBtn').onclick = () => { currentTerm = ''; cfg = { demo: true }; store(CFG_KEY, cfg); sel = null; dlg.close(); reload(); toast('데모 모드예요. 이 브라우저에만 저장됩니다.'); };
@@ -2284,13 +2514,14 @@ $('#cfgSave').onclick = async () => {
     sel = null;
     applyData(await api('load'));
     store(CFG_KEY, cfg);
-    pending.clear(); draftAreas = null; draftDirty = false; stuDirty = false;
+    pending.clear(); memoPending.clear(); draftAreas = null; draftDirty = false; stuDirty = false;
+    adoptLocalMemos();
     dlg.close(); $('#modeBadge').hidden = true; renderGroupSel(); renderCurrent(); toast('연결되었어요');
   } catch(e) { cfg = prev; $('#cfgErr').textContent = e.message; }
 };
 
 $$('.tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
-window.addEventListener('beforeunload', e => { if (pending.size || draftDirty || stuDirty){ e.preventDefault(); e.returnValue = ''; } });
+window.addEventListener('beforeunload', e => { if (unsavedCount() || draftDirty || stuDirty){ e.preventDefault(); e.returnValue = ''; } });
 
 renderGroupSel(); renderTermSel();
 if (cfg.url || cfg.demo) reload(); else { renderCurrent(); openSettings(); }
